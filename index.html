@@ -10,7 +10,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAWJ8gxMBqlCH-HGccXb-PpwM7xWVghUNg",
@@ -25,9 +25,9 @@
 
         const BANNED_KEYWORDS = ["暴力", "殺す", "死ね", "爆弾", "差別", "ヘイト", "犯罪", "グロ", "ガイジ"];
         const MAX_CONTENT_LENGTH = 10000;
-        const MAX_COMMENT_LENGTH = 500; // コメントの文字数制限
+        const MAX_COMMENT_LENGTH = 500;
 
-        function maskText(text) {
+        function processText(text) {
             if (!text) return "";
             let safeText = String(text);
             BANNED_KEYWORDS.forEach(word => {
@@ -35,6 +35,7 @@
                 const reg = new RegExp(escapedWord, 'gi');
                 safeText = safeText.replace(reg, '***');
             });
+            safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
             return safeText;
         }
 
@@ -78,59 +79,91 @@
             const list = document.getElementById('menu-list');
             list.innerHTML = Array.from(cats).sort().map(c => {
                 const pgs = Object.keys(window.wikiData).filter(id => (window.wikiData[id].category || "未分類") === c);
-                return `<div class="menu-label">${maskText(c)}</div><ul>${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${maskText(id)}</a></li>`).join('')}</ul>`;
+                return `<div class="menu-label">${processText(c)}</div><ul>${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>`;
             }).join('');
         }
 
-        // グローバルチャット
+        window.setReply = (targetId, name) => {
+            const input = document.getElementById(targetId);
+            input.value = `>>${name} ${input.value}`;
+            input.focus();
+        };
+
+        window.deleteMsg = async (colPath, docId) => {
+            const pass = prompt("投稿時のパスワードを入力してください：");
+            if(!pass) return;
+            try {
+                const docRef = doc(db, colPath, docId);
+                const snap = await getDoc(docRef);
+                if(snap.exists() && snap.data().pass === pass) {
+                    await deleteDoc(docRef);
+                    alert("削除しました。");
+                } else {
+                    alert("パスワードが違います。");
+                }
+            } catch(e) { alert("エラーが発生しました。"); }
+        };
+
         onSnapshot(query(collection(db, "global_chat"), orderBy("createdAt", "asc")), (s) => {
             const chatList = document.getElementById('chat-list');
             if(!chatList) return;
             chatList.innerHTML = s.docs.slice(-30).map(d => {
                 const data = d.data();
-                return `<div class="msg"><b style="color:var(--accent);">${maskText(data.user || "名無し")}:</b> ${maskText(data.text)}</div>`;
+                const u = data.user || "名無し";
+                return `<div class="msg" style="display:flex; justify-content:space-between; align-items:start;">
+                    <div onclick="setReply('c-t', '${u}')" style="cursor:pointer; flex:1;">
+                        <b style="color:var(--accent);">${processText(u)}:</b> ${processText(data.text)}
+                    </div>
+                    <button class="del-btn" onclick="deleteMsg('global_chat', '${d.id}')">×</button>
+                </div>`;
             }).join('');
             chatList.scrollTop = chatList.scrollHeight;
         });
 
         window.sendChat = async () => {
             const u = document.getElementById('c-u').value || "名無し";
+            const p = document.getElementById('c-p').value;
             const t = document.getElementById('c-t');
             if(!t.value.trim()) return;
+            if(!p) return alert("削除用パスワードを設定してください。");
             if(!isSafe(u) || !isSafe(t.value)) return;
-            await addDoc(collection(db, "global_chat"), { user: u, text: t.value, createdAt: serverTimestamp() });
+            await addDoc(collection(db, "global_chat"), { user: u, text: t.value, pass: p, createdAt: serverTimestamp() });
             t.value = "";
         };
 
-        // --- コメント機能 ---
         window.sendComment = async () => {
             const hash = decodeURIComponent(location.hash.slice(1)).split('#')[0] || 'home';
             const u = document.getElementById('comment-user').value || "名無し";
+            const p = document.getElementById('comment-pass').value;
             const t = document.getElementById('comment-text');
             if(!t.value.trim()) return;
-            if(t.value.length > MAX_COMMENT_LENGTH) return alert("コメントが長すぎます。");
+            if(!p) return alert("削除用パスワードを設定してください。");
+            if(t.value.length > MAX_COMMENT_LENGTH) return alert("文字数制限オーバー");
             if(!isSafe(u) || !isSafe(t.value)) return;
 
             await addDoc(collection(db, "pages", hash, "comments"), {
-                user: u,
-                text: t.value,
-                createdAt: serverTimestamp()
+                user: u, text: t.value, pass: p, createdAt: serverTimestamp()
             });
             t.value = "";
         };
 
         function watchComments(pageId) {
             if (commentUnsubscribe) commentUnsubscribe();
-            const q = query(collection(db, "pages", pageId, "comments"), orderBy("createdAt", "desc"));
+            const colPath = `pages/${pageId}/comments`;
+            const q = query(collection(db, colPath), orderBy("createdAt", "desc"));
             commentUnsubscribe = onSnapshot(q, (s) => {
                 const list = document.getElementById('page-comments-list');
                 if(!list) return;
                 list.innerHTML = s.docs.map(d => {
                     const data = d.data();
+                    const u = data.user || "名無し";
                     const date = data.createdAt ? data.createdAt.toDate().toLocaleString() : "...";
                     return `<div class="comment-item">
-                        <div class="comment-meta"><b>${maskText(data.user)}</b> <span>${date}</span></div>
-                        <div class="comment-content">${maskText(data.text)}</div>
+                        <div class="comment-meta">
+                            <span onclick="setReply('comment-text', '${u}')" style="cursor:pointer;"><b>${processText(u)}</b> <span>${date}</span></span>
+                            <button class="del-btn" onclick="deleteMsg('${colPath}', '${d.id}')">削除</button>
+                        </div>
+                        <div class="comment-content">${processText(data.text)}</div>
                     </div>`;
                 }).join('') || '<p style="color:#666; font-size:0.8rem;">まだコメントはありません。</p>';
             });
@@ -141,7 +174,7 @@
             if(!q) return render();
             const results = Object.keys(window.wikiData).filter(id => id.toLowerCase().includes(q) || (window.wikiData[id].content || "").toLowerCase().includes(q));
             document.getElementById('page-title').innerText = `検索結果: ${q}`;
-            document.getElementById('wiki-view').innerHTML = results.length > 0 ? `<ul>${results.map(id => `<li><a href="#${encodeURIComponent(id)}">${maskText(id)}</a></li>`).join('')}</ul>` : `<p>該当なし</p>`;
+            document.getElementById('wiki-view').innerHTML = results.length > 0 ? `<ul>${results.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>` : `<p>該当なし</p>`;
         };
 
         function render() {
@@ -153,22 +186,20 @@
 
             const commentSection = document.getElementById('page-comment-section');
             if (hash === 'home') {
-                document.getElementById('page-title').innerText = "トップページ";
+                document.getElementById('page-title').innerText = "TOP PAGE";
                 document.getElementById('wiki-view').innerHTML = document.getElementById('home-content').innerHTML;
                 document.getElementById('toc-box').style.display = 'none';
                 commentSection.style.display = 'none';
             } else {
                 const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類" };
-                document.getElementById('page-title').innerText = maskText(hash);
+                document.getElementById('page-title').innerText = processText(hash);
                 const rawHTML = marked.parse(data.content || "");
-                document.getElementById('wiki-view').innerHTML = maskText(rawHTML);
+                document.getElementById('wiki-view').innerHTML = processText(rawHTML);
                 
                 document.getElementById('e-id').value = hash;
                 document.getElementById('e-ct').value = data.content || "";
                 document.getElementById('e-ca').value = data.category || "未分類";
                 generateTOC();
-                
-                // コメント欄の表示と購読
                 commentSection.style.display = 'block';
                 watchComments(hash);
             }
@@ -195,7 +226,7 @@
             const content = document.getElementById('e-ct').value;
             const category = document.getElementById('e-ca').value;
             if(!id) return alert("Title required");
-            if(content.length > MAX_CONTENT_LENGTH) return alert("文字数制限オーバーです。");
+            if(content.length > MAX_CONTENT_LENGTH) return alert("文字数制限オーバー");
             if(!isSafe(id) || !isSafe(content) || !isSafe(category)) return;
             await setDoc(doc(db, "pages", id), { content: content, category: category || "未分類", updatedAt: serverTimestamp() });
             location.hash = `#${encodeURIComponent(id)}`;
@@ -226,13 +257,14 @@
         .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
         #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
-        .msg { margin-bottom: 8px; word-break: break-all; }
+        .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
         .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
+        .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
+        .del-btn:hover { color: #ff4d4d; }
         
-        /* コメント欄スタイル */
         #page-comment-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
         .comment-item { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--accent); }
-        .comment-meta { font-size: 0.75rem; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .comment-meta { font-size: 0.75rem; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
         .comment-content { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
 
         .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
@@ -242,11 +274,11 @@
         #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; }
-        @media (max-width: 1100px) {
-            #display-area { flex-direction: column; }
-            aside#right-sidebar { width: 100%; position: static; }
-            aside#left-sidebar { width: 200px; }
-        }
+
+        /* ホーム用スタイル */
+        .home-section { margin-bottom: 30px; }
+        .home-h3 { color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+        .rule-card { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent); }
     </style>
 </head>
 <body>
@@ -284,7 +316,10 @@
                     <section id="page-comment-section" style="display:none;">
                         <h3 style="color:#fff; font-size:1.2rem; margin-bottom:20px;">コメント</h3>
                         <div style="margin-bottom:25px; background:rgba(0,0,0,0.3); padding:15px; border-radius:8px;">
-                            <input type="text" id="comment-user" class="chat-input" placeholder="名前" style="margin-bottom:10px;">
+                            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                                <input type="text" id="comment-user" class="chat-input" placeholder="名前" style="flex:1;">
+                                <input type="password" id="comment-pass" class="chat-input" placeholder="削除パスワード" style="flex:1;">
+                            </div>
                             <textarea id="comment-text" class="chat-input" placeholder="コメントを入力（500文字以内）" style="height:80px; resize:none;"></textarea>
                             <button class="btn" style="margin-top:10px; width:100%;" onclick="sendComment()">コメントを投稿</button>
                         </div>
@@ -296,7 +331,10 @@
                     <div class="widget">
                         <div class="widget-title">GLOBAL CHAT</div>
                         <div id="chat-list"></div>
-                        <input type="text" id="c-u" class="chat-input" placeholder="名前">
+                        <div style="display:flex; gap:5px; margin-bottom:5px;">
+                            <input type="text" id="c-u" class="chat-input" placeholder="名前" style="flex:1;">
+                            <input type="password" id="c-p" class="chat-input" placeholder="削除パス" style="flex:1;">
+                        </div>
                         <input type="text" id="c-t" class="chat-input" placeholder="メッセージ..." onkeydown="if(event.key==='Enter') sendChat()">
                     </div>
                     <div class="widget" id="toc-box">
@@ -323,15 +361,48 @@
 <a href="#editor" class="fab">+</a>
 
 <script id="home-content" type="text/template">
-    <p>Conquer The World (CTW) 非公式ウィキへようこそ！</p>
-    <div style="margin-top: 25px; padding: 15px; background: rgba(77, 151, 255, 0.1); border-radius: 6px; border-left: 4px solid var(--accent);">
-        <h3 style="margin-top:0; color: var(--accent);">📌 ルール</h3>
-        <ul style="margin-left: 20px;">
-            <li>誰でも自由に編集・作成できますが、荒らしや誹謗中傷は禁止です。</li>
-            <li>ページ下部のコメント欄では、そのページの内容に関する議論ができます。</li>
-            <li>不適切な投稿は伏せ字（***）になります。</li>
-            <li>1ページあたりの上限は10,000文字、1コメントは500文字です。</li>
-        </ul>
+    <div class="home-section">
+        <p>Conquer The World (CTW) 非公式ウィキへようこそ！<br>
+        このサイトは、プレイヤー全員で作り上げる攻略・情報共有プラットフォームです。</p>
+    </div>
+
+    <div class="home-section">
+        <h3 class="home-h3">📌 基本ルール</h3>
+        <div class="rule-card">
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><b>自由な編集</b>: 誰でも新しいページの作成や編集が可能です。</li>
+                <li><b>マナーの遵守</b>: 荒らし行為、誹謗中傷、他者を不快にさせる表現は厳禁です。</li>
+                <li><b>文字数制限</b>: 1ページ最大10,000文字、1コメント最大500文字です。</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="home-section">
+        <h3 class="home-h3">💬 コミュニケーション機能</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #fff;">グローバルチャット</h4>
+                <p style="font-size: 0.85rem; color: #aaa;">右サイドバーで全ページ共通の会話が楽しめます。名前と削除用パスワードを入力して参加しましょう。</p>
+            </div>
+            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #fff;">ページ別コメント</h4>
+                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で、その内容に特化した議論が可能です。発言をクリックで返信できます。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="home-section" style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px;">
+        <h3 class="home-h3" style="border-bottom-color: var(--accent);">⚠️ 投稿の削除について</h3>
+        <p style="font-size: 0.9rem; margin: 0;">
+            チャットやコメントを投稿する際は、必ず<b>「削除パスワード」</b>を設定してください。<br>
+            投稿したメッセージの横にある「×」または「削除」ボタンを押し、設定したパスワードを入力することで、自分で投稿を消去できます。
+        </p>
+    </div>
+
+    <div class="home-section">
+        <h3 class="home-h3">🛠️ ページを新しく作るには？</h3>
+        <p>画面右下の青い「＋」ボタン、または左メニューの「ページ作成」からエディタを開けます。<br>
+        Markdown記法に対応しており、<code>## 見出し</code> や <code>[リンク名](#ページ名)</code> などを使ってリッチなページを作成できます。</p>
     </div>
 </script>
 
