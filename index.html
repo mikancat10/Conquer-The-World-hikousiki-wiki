@@ -23,9 +23,9 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- 設定 ---
         const BANNED_KEYWORDS = ["暴力", "殺す", "死ね", "爆弾", "差別", "ヘイト", "犯罪", "グロ", "ガイジ"];
-        const MAX_CONTENT_LENGTH = 10000; // 編集できる最大文字数
+        const MAX_CONTENT_LENGTH = 10000;
+        const MAX_COMMENT_LENGTH = 500; // コメントの文字数制限
 
         function maskText(text) {
             if (!text) return "";
@@ -45,6 +45,7 @@
         }
 
         window.wikiData = {};
+        let commentUnsubscribe = null;
 
         function updateClock() {
             const now = new Date();
@@ -81,6 +82,7 @@
             }).join('');
         }
 
+        // グローバルチャット
         onSnapshot(query(collection(db, "global_chat"), orderBy("createdAt", "asc")), (s) => {
             const chatList = document.getElementById('chat-list');
             if(!chatList) return;
@@ -100,6 +102,40 @@
             t.value = "";
         };
 
+        // --- コメント機能 ---
+        window.sendComment = async () => {
+            const hash = decodeURIComponent(location.hash.slice(1)).split('#')[0] || 'home';
+            const u = document.getElementById('comment-user').value || "名無し";
+            const t = document.getElementById('comment-text');
+            if(!t.value.trim()) return;
+            if(t.value.length > MAX_COMMENT_LENGTH) return alert("コメントが長すぎます。");
+            if(!isSafe(u) || !isSafe(t.value)) return;
+
+            await addDoc(collection(db, "pages", hash, "comments"), {
+                user: u,
+                text: t.value,
+                createdAt: serverTimestamp()
+            });
+            t.value = "";
+        };
+
+        function watchComments(pageId) {
+            if (commentUnsubscribe) commentUnsubscribe();
+            const q = query(collection(db, "pages", pageId, "comments"), orderBy("createdAt", "desc"));
+            commentUnsubscribe = onSnapshot(q, (s) => {
+                const list = document.getElementById('page-comments-list');
+                if(!list) return;
+                list.innerHTML = s.docs.map(d => {
+                    const data = d.data();
+                    const date = data.createdAt ? data.createdAt.toDate().toLocaleString() : "...";
+                    return `<div class="comment-item">
+                        <div class="comment-meta"><b>${maskText(data.user)}</b> <span>${date}</span></div>
+                        <div class="comment-content">${maskText(data.text)}</div>
+                    </div>`;
+                }).join('') || '<p style="color:#666; font-size:0.8rem;">まだコメントはありません。</p>';
+            });
+        }
+
         window.searchWiki = () => {
             const q = document.getElementById('wiki-search').value.toLowerCase().trim();
             if(!q) return render();
@@ -115,10 +151,12 @@
             document.getElementById('editor-area').style.display = isEd ? 'block' : 'none';
             if (isEd) return;
 
+            const commentSection = document.getElementById('page-comment-section');
             if (hash === 'home') {
                 document.getElementById('page-title').innerText = "トップページ";
                 document.getElementById('wiki-view').innerHTML = document.getElementById('home-content').innerHTML;
                 document.getElementById('toc-box').style.display = 'none';
+                commentSection.style.display = 'none';
             } else {
                 const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類" };
                 document.getElementById('page-title').innerText = maskText(hash);
@@ -129,6 +167,10 @@
                 document.getElementById('e-ct').value = data.content || "";
                 document.getElementById('e-ca').value = data.category || "未分類";
                 generateTOC();
+                
+                // コメント欄の表示と購読
+                commentSection.style.display = 'block';
+                watchComments(hash);
             }
             window.scrollTo(0,0);
         }
@@ -152,17 +194,9 @@
             const id = document.getElementById('e-id').value.trim();
             const content = document.getElementById('e-ct').value;
             const category = document.getElementById('e-ca').value;
-            
-            if(!id) return alert("ページ名を入力してください。");
-            
-            // 【追加】文字数制限のチェック
-            if(content.length > MAX_CONTENT_LENGTH) {
-                alert(`文字数制限オーバーです（現在: ${content.length} / 上限: ${MAX_CONTENT_LENGTH}文字）`);
-                return;
-            }
-
+            if(!id) return alert("Title required");
+            if(content.length > MAX_CONTENT_LENGTH) return alert("文字数制限オーバーです。");
             if(!isSafe(id) || !isSafe(content) || !isSafe(category)) return;
-            
             await setDoc(doc(db, "pages", id), { content: content, category: category || "未分類", updatedAt: serverTimestamp() });
             location.hash = `#${encodeURIComponent(id)}`;
             location.reload();
@@ -181,26 +215,33 @@
         .header-left a { color: #fff; text-decoration: none; }
         #header-clock { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
         #main-container { display: flex; flex: 1; }
-        aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; backdrop-filter: blur(8px); width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
+        aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
         .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
         main { flex: 1; min-width: 0; }
         #content-body { padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
         #display-area { display: flex; gap: 20px; align-items: flex-start; }
-        article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; min-height: 70vh; }
+        article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; }
         #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
         aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
-        .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; backdrop-filter: blur(8px); }
+        .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
-        #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; padding-right: 5px; }
-        .msg { margin-bottom: 8px; line-height: 1.4; word-break: break-all; }
+        #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
+        .msg { margin-bottom: 8px; word-break: break-all; }
         .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
+        
+        /* コメント欄スタイル */
+        #page-comment-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
+        .comment-item { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--accent); }
+        .comment-meta { font-size: 0.75rem; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .comment-content { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
+
         .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
         aside ul { list-style: none; padding: 0; margin: 0 0 0 10px; font-size: 0.85rem; }
         aside a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
-        #editor-area { display: none; background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; border: 1px solid var(--border); }
-        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; font-family: monospace; resize: vertical; margin-top: 10px; }
-        .btn { background: var(--accent); color: white; border: none; padding: 12px 24px; font-weight: bold; border-radius: 4px; cursor: pointer; }
-        .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); z-index: 1000; }
+        #editor-area { display: none; background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; }
+        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; }
         @media (max-width: 1100px) {
             #display-area { flex-direction: column; }
             aside#right-sidebar { width: 100%; position: static; }
@@ -239,11 +280,21 @@
                 <article id="wiki-card">
                     <div id="page-title">Loading...</div>
                     <div id="wiki-view"></div>
+
+                    <section id="page-comment-section" style="display:none;">
+                        <h3 style="color:#fff; font-size:1.2rem; margin-bottom:20px;">コメント</h3>
+                        <div style="margin-bottom:25px; background:rgba(0,0,0,0.3); padding:15px; border-radius:8px;">
+                            <input type="text" id="comment-user" class="chat-input" placeholder="名前" style="margin-bottom:10px;">
+                            <textarea id="comment-text" class="chat-input" placeholder="コメントを入力（500文字以内）" style="height:80px; resize:none;"></textarea>
+                            <button class="btn" style="margin-top:10px; width:100%;" onclick="sendComment()">コメントを投稿</button>
+                        </div>
+                        <div id="page-comments-list"></div>
+                    </section>
                 </article>
 
                 <aside id="right-sidebar">
                     <div class="widget">
-                        <div class="widget-title">CHAT</div>
+                        <div class="widget-title">GLOBAL CHAT</div>
                         <div id="chat-list"></div>
                         <input type="text" id="c-u" class="chat-input" placeholder="名前">
                         <input type="text" id="c-t" class="chat-input" placeholder="メッセージ..." onkeydown="if(event.key==='Enter') sendChat()">
@@ -277,12 +328,9 @@
         <h3 style="margin-top:0; color: var(--accent);">📌 ルール</h3>
         <ul style="margin-left: 20px;">
             <li>誰でも自由に編集・作成できますが、荒らしや誹謗中傷は禁止です。</li>
-            <li>ページの内容は随時更新される可能性があります。</li>
-            <li>編集の際は、既存の内容を尊重しつつ、正確な情報を心がけてください。</li>
-            <li>不適切な内容や誤情報を見つけた場合は、編集して修正するか、管理者に報告してください。</li>
-            <li>このウィキは非公式であり、ゲームの公式情報とは異なる場合があります。ご了承ください。</li>
-            <li>コメントやチャットでは、他のユーザーに対して敬意を持って接してください。</li>
-            <li>1ページあたりの上限は10,000文字です。</li>
+            <li>ページ下部のコメント欄では、そのページの内容に関する議論ができます。</li>
+            <li>不適切な投稿は伏せ字（***）になります。</li>
+            <li>1ページあたりの上限は10,000文字、1コメントは500文字です。</li>
         </ul>
     </div>
 </script>
