@@ -10,7 +10,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAWJ8gxMBqlCH-HGccXb-PpwM7xWVghUNg",
@@ -47,6 +47,7 @@
 
         window.wikiData = {};
         let commentUnsubscribe = null;
+        let likeUnsubscribe = null;
 
         function updateClock() {
             const now = new Date();
@@ -103,6 +104,23 @@
                 }
             } catch(e) { alert("エラーが発生しました。"); }
         };
+
+        window.addLike = async () => {
+            const hash = decodeURIComponent(location.hash.slice(1)).split('#')[0];
+            if(!hash || hash === 'home' || hash === 'editor') return;
+            const docRef = doc(db, "pages", hash);
+            await updateDoc(docRef, { likes: increment(1) });
+        };
+
+        function watchLikes(pageId) {
+            if(likeUnsubscribe) likeUnsubscribe();
+            likeUnsubscribe = onSnapshot(doc(db, "pages", pageId), (s) => {
+                const data = s.data();
+                const count = data ? (data.likes || 0) : 0;
+                const el = document.getElementById('like-count');
+                if(el) el.innerText = count;
+            });
+        }
 
         onSnapshot(query(collection(db, "global_chat"), orderBy("createdAt", "asc")), (s) => {
             const chatList = document.getElementById('chat-list');
@@ -169,6 +187,16 @@
             });
         }
 
+        window.insertImage = () => {
+            const url = prompt("画像のURLを入力してください：");
+            if(!url) return;
+            const textarea = document.getElementById('e-ct');
+            const pos = textarea.selectionStart;
+            const text = textarea.value;
+            textarea.value = text.substring(0, pos) + `\n![](${url})\n` + text.substring(textarea.selectionEnd);
+            textarea.focus();
+        };
+
         window.searchWiki = () => {
             const q = document.getElementById('wiki-search').value.toLowerCase().trim();
             if(!q) return render();
@@ -185,13 +213,16 @@
             if (isEd) return;
 
             const commentSection = document.getElementById('page-comment-section');
+            const likeContainer = document.getElementById('like-container');
+
             if (hash === 'home') {
                 document.getElementById('page-title').innerText = "TOP PAGE";
                 document.getElementById('wiki-view').innerHTML = document.getElementById('home-content').innerHTML;
                 document.getElementById('toc-box').style.display = 'none';
                 commentSection.style.display = 'none';
+                likeContainer.style.display = 'none';
             } else {
-                const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類" };
+                const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類", likes: 0 };
                 document.getElementById('page-title').innerText = processText(hash);
                 const rawHTML = marked.parse(data.content || "");
                 document.getElementById('wiki-view').innerHTML = processText(rawHTML);
@@ -199,9 +230,12 @@
                 document.getElementById('e-id').value = hash;
                 document.getElementById('e-ct').value = data.content || "";
                 document.getElementById('e-ca').value = data.category || "未分類";
+                
                 generateTOC();
                 commentSection.style.display = 'block';
+                likeContainer.style.display = 'flex';
                 watchComments(hash);
+                watchLikes(hash);
             }
             window.scrollTo(0,0);
         }
@@ -228,7 +262,17 @@
             if(!id) return alert("Title required");
             if(content.length > MAX_CONTENT_LENGTH) return alert("文字数制限オーバー");
             if(!isSafe(id) || !isSafe(content) || !isSafe(category)) return;
-            await setDoc(doc(db, "pages", id), { content: content, category: category || "未分類", updatedAt: serverTimestamp() });
+            
+            const docRef = doc(db, "pages", id);
+            const snap = await getDoc(docRef);
+            const currentLikes = snap.exists() ? (snap.data().likes || 0) : 0;
+
+            await setDoc(docRef, { 
+                content: content, 
+                category: category || "未分類", 
+                updatedAt: serverTimestamp(),
+                likes: currentLikes 
+            });
             location.hash = `#${encodeURIComponent(id)}`;
             location.reload();
         };
@@ -252,7 +296,12 @@
         #content-body { padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
         #display-area { display: flex; gap: 20px; align-items: flex-start; }
         article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; }
-        #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
+        
+        .title-wrapper { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
+        #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; margin: 0; }
+        .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
+        .like-btn:hover { background: #ff4d4d; color: #fff; }
+
         aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
         .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
@@ -260,24 +309,26 @@
         .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
         .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
         .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
-        .del-btn:hover { color: #ff4d4d; }
         
         #page-comment-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
         .comment-item { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--accent); }
         .comment-meta { font-size: 0.75rem; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-        .comment-content { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
 
         .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
         aside ul { list-style: none; padding: 0; margin: 0 0 0 10px; font-size: 0.85rem; }
         aside a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
+        
         #editor-area { display: none; background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; }
-        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; }
+        #editor-tools { margin-bottom: 10px; display: flex; gap: 10px; }
+        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; font-family: monospace; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .tool-btn { background: #333; color: #eee; padding: 5px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+        
         .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; }
 
-        /* ホーム用スタイル */
+        /* ホーム用追加スタイル */
         .home-section { margin-bottom: 30px; }
-        .home-h3 { color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+        .home-h3 { color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; font-size: 1.2rem; }
         .rule-card { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent); }
     </style>
 </head>
@@ -310,7 +361,12 @@
         <div id="content-body">
             <div id="display-area">
                 <article id="wiki-card">
-                    <div id="page-title">Loading...</div>
+                    <div class="title-wrapper">
+                        <div id="page-title">Loading...</div>
+                        <div id="like-container" style="display:none; align-items:center; gap:10px;">
+                            <button class="like-btn" onclick="addLike()">❤ いいね <span id="like-count">0</span></button>
+                        </div>
+                    </div>
                     <div id="wiki-view"></div>
 
                     <section id="page-comment-section" style="display:none;">
@@ -346,6 +402,10 @@
 
             <section id="editor-area">
                 <h2 style="color:#fff; margin-top:0;">EDIT PAGE</h2>
+                <div id="editor-tools">
+                    <button class="tool-btn" onclick="insertImage()">📷 画像挿入</button>
+                    <span style="font-size:0.7rem; color:#666;">URLを貼るだけで画像が表示されます</span>
+                </div>
                 <input type="text" id="e-id" placeholder="ページ名" class="chat-input" style="height:45px; font-size:1rem;">
                 <input type="text" id="e-ca" placeholder="カテゴリー" class="chat-input">
                 <textarea id="e-ct" placeholder="Markdown形式..."></textarea>
@@ -364,6 +424,17 @@
     <div class="home-section">
         <p>Conquer The World (CTW) 非公式ウィキへようこそ！<br>
         このサイトは、プレイヤー全員で作り上げる攻略・情報共有プラットフォームです。</p>
+    </div>
+
+    <div class="home-section">
+        <h3 class="home-h3">✨ 最新のアップデート</h3>
+        <div style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent);">
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><b>❤ いいね機能</b>: 良いと思ったページには「いいね」を送って応援しましょう！</li>
+                <li><b>📷 画像投稿</b>: エディタの「画像挿入」ボタンから、簡単に画像を埋め込めるようになりました。</li>
+                <li><b>💬 返信機能</b>: チャットやコメントの発言をクリックして返信ができます。</li>
+            </ul>
+        </div>
     </div>
 
     <div class="home-section">
@@ -386,23 +457,23 @@
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
                 <h4 style="margin-top: 0; color: #fff;">ページ別コメント</h4>
-                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で、その内容に特化した議論が可能です。発言をクリックで返信できます。</p>
+                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で議論が可能です。発言をクリックで返信できます。</p>
             </div>
         </div>
     </div>
 
-    <div class="home-section" style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px;">
-        <h3 class="home-h3" style="border-bottom-color: var(--accent);">⚠️ 投稿の削除について</h3>
+    <div class="home-section" style="background: rgba(255, 77, 77, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 77, 77, 0.2);">
+        <h3 class="home-h3" style="color: #ff4d4d; border-bottom-color: #ff4d4d;">⚠️ 投稿の削除について</h3>
         <p style="font-size: 0.9rem; margin: 0;">
             チャットやコメントを投稿する際は、必ず<b>「削除パスワード」</b>を設定してください。<br>
-            投稿したメッセージの横にある「×」または「削除」ボタンを押し、設定したパスワードを入力することで、自分で投稿を消去できます。
+            投稿横の「×」または「削除」ボタンを押し、設定したパスワードを入れることで消去できます。
         </p>
     </div>
 
     <div class="home-section">
         <h3 class="home-h3">🛠️ ページを新しく作るには？</h3>
         <p>画面右下の青い「＋」ボタン、または左メニューの「ページ作成」からエディタを開けます。<br>
-        Markdown記法に対応しており、<code>## 見出し</code> や <code>[リンク名](#ページ名)</code> などを使ってリッチなページを作成できます。</p>
+        Markdown記法に対応しており、<code>## 見出し</code> や <code>![] (URL)</code> で画像を挿入できます。</p>
     </div>
 </script>
 
