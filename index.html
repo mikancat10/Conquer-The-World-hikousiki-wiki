@@ -187,14 +187,12 @@
             });
         }
 
-        // --- 【修正】画像挿入時に自動でMarkdownタグを付与 ---
         window.insertImage = () => {
             const url = prompt("画像のURLを入力してください：");
             if(!url) return;
             const textarea = document.getElementById('e-ct');
             const pos = textarea.selectionStart;
             const text = textarea.value;
-            // Markdownの画像タグ形式で挿入
             textarea.value = text.substring(0, pos) + `\n![](${url})\n` + text.substring(textarea.selectionEnd);
             textarea.focus();
         };
@@ -304,8 +302,16 @@
         .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
         .like-btn:hover { background: #ff4d4d; color: #fff; }
 
-        /* --- 【修正】Wikiビュー内の画像がはみ出さないように設定 --- */
-        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 10px 0; border-radius: 4px; }
+        /* 画像デザイン（はみ出し防止＋装飾） */
+        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+
+        /* テーブル（比較表）のデザイン強化 */
+        #wiki-view { overflow-x: auto; } /* スマホでの表はみ出し対策 */
+        #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
+        #wiki-view th { background: #333; color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
+        #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; }
+        #wiki-view tr:nth-child(even) { background: rgba(255,255,255,0.03); } /* 偶数行の色を変える（ゼブラ） */
+        #wiki-view tr:hover { background: rgba(77, 151, 255, 0.1); } /* ホバーで光らせる */
 
         aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
         .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
@@ -434,6 +440,7 @@
         <h3 class="home-h3">✨ 最新のアップデート</h3>
         <div style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent);">
             <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><b>📊 テーブル対応</b>: 陣営ごとのステータス比較表を綺麗に作成できるようになりました！</li>
                 <li><b>❤ いいね機能</b>: 良いと思ったページには「いいね」を送って応援しましょう！</li>
                 <li><b>📷 画像投稿</b>: エディタの「画像挿入」ボタンから、簡単に画像を埋め込めるようになりました。</li>
                 <li><b>💬 返信機能</b>: チャットやコメントの発言をクリックして返信ができます。</li>
@@ -457,11 +464,11 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
             <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
                 <h4 style="margin-top: 0; color: #fff;">グローバルチャット</h4>
-                <p style="font-size: 0.85rem; color: #aaa;">右サイドバーで全ページ共通の会話が楽しめます。名前と削除用パスワードを入力して参加しましょう。</p>
+                <p style="font-size: 0.85rem; color: #aaa;">右サイドバーで全ページ共通の会話が楽しめます。</p>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
                 <h4 style="margin-top: 0; color: #fff;">ページ別コメント</h4>
-                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で議論が可能です。発言をクリックで返信できます。</p>
+                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で議論が可能です。</p>
             </div>
         </div>
     </div>
@@ -469,15 +476,8 @@
     <div class="home-section" style="background: rgba(255, 77, 77, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 77, 77, 0.2);">
         <h3 class="home-h3" style="color: #ff4d4d; border-bottom-color: #ff4d4d;">⚠️ 投稿の削除について</h3>
         <p style="font-size: 0.9rem; margin: 0;">
-            チャットやコメントを投稿する際は、必ず<b>「削除パスワード」</b>を設定してください。<br>
             投稿横の「×」または「削除」ボタンを押し、設定したパスワードを入れることで消去できます。
         </p>
-    </div>
-
-    <div class="home-section">
-        <h3 class="home-h3">🛠️ ページを新しく作るには？</h3>
-        <p>画面右下の青い「＋」ボタン、または左メニューの「ページ作成」からエディタを開けます。<br>
-        Markdown記法に対応しており、<code>## 見出し</code> や <code>![] (URL)</code> で画像を挿入できます。</p>
     </div>
 </script>
 
