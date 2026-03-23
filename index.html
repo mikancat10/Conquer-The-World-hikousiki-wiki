@@ -11,6 +11,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        // --- Auth機能の追加 ---
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAWJ8gxMBqlCH-HGccXb-PpwM7xWVghUNg",
@@ -22,6 +24,33 @@
         };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        
+        // --- Auth初期化 ---
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        let currentUser = null;
+
+        // ログイン状態の監視
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            const loginBtn = document.getElementById('login-btn');
+            const userProfile = document.getElementById('user-profile');
+            if (user) {
+                loginBtn.style.display = 'none';
+                userProfile.style.display = 'flex';
+                document.getElementById('display-name').innerText = user.displayName;
+                document.getElementById('display-pic').src = user.photoURL;
+                // 名前入力欄を自動埋め
+                if(document.getElementById('comment-user')) document.getElementById('comment-user').value = user.displayName;
+                if(document.getElementById('c-u')) document.getElementById('c-u').value = user.displayName;
+            } else {
+                loginBtn.style.display = 'block';
+                userProfile.style.display = 'none';
+            }
+        });
+
+        window.login = () => signInWithPopup(auth, provider).catch(err => alert("ログインに失敗しました"));
+        window.logout = () => signOut(auth);
 
         const BANNED_KEYWORDS = ["暴力", "殺す", "死ね", "爆弾", "差別", "ヘイト", "犯罪", "グロ", "ガイジ"];
         const MAX_CONTENT_LENGTH = 10000;
@@ -145,7 +174,13 @@
             if(!t.value.trim()) return;
             if(!p) return alert("削除用パスワードを設定してください。");
             if(!isSafe(u) || !isSafe(t.value)) return;
-            await addDoc(collection(db, "global_chat"), { user: u, text: t.value, pass: p, createdAt: serverTimestamp() });
+            await addDoc(collection(db, "global_chat"), { 
+                user: u, 
+                text: t.value, 
+                pass: p, 
+                createdAt: serverTimestamp(),
+                uid: currentUser ? currentUser.uid : null 
+            });
             t.value = "";
         };
 
@@ -160,7 +195,8 @@
             if(!isSafe(u) || !isSafe(t.value)) return;
 
             await addDoc(collection(db, "pages", hash, "comments"), {
-                user: u, text: t.value, pass: p, createdAt: serverTimestamp()
+                user: u, text: t.value, pass: p, createdAt: serverTimestamp(),
+                uid: currentUser ? currentUser.uid : null
             });
             t.value = "";
         };
@@ -205,7 +241,6 @@
             document.getElementById('wiki-view').innerHTML = results.length > 0 ? `<ul>${results.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>` : `<p>該当なし</p>`;
         };
 
-        // 編集ボタン用関数
         window.openEditor = (pageId = "") => {
             if (pageId === "home") return alert("トップページは編集できません。");
             location.hash = pageId ? `#editor#${encodeURIComponent(pageId)}` : "#editor";
@@ -220,7 +255,6 @@
             document.getElementById('editor-area').style.display = isEd ? 'block' : 'none';
             
             if (isEd) {
-                // 編集モード
                 if(targetId && window.wikiData[targetId]) {
                     document.getElementById('e-id').value = targetId;
                     document.getElementById('e-id').readOnly = true;
@@ -232,7 +266,7 @@
                     document.getElementById('e-ct').value = "";
                     document.getElementById('e-ca').value = "";
                 }
-                document.getElementById('e-pass').value = ""; // パスワードは常に空にする
+                document.getElementById('e-pass').value = "";
                 return;
             }
 
@@ -295,7 +329,6 @@
             const docRef = doc(db, "pages", id);
             const snap = await getDoc(docRef);
 
-            // 既存ページがある場合、パスワードを照合
             if (snap.exists()) {
                 const existingData = snap.data();
                 if (existingData.pass && existingData.pass !== pass) {
@@ -310,7 +343,8 @@
                 category: category || "未分類", 
                 pass: pass,
                 updatedAt: serverTimestamp(),
-                likes: currentLikes 
+                likes: currentLikes,
+                authorUid: currentUser ? currentUser.uid : null // 投稿者IDを記録
             });
             alert("保存しました！");
             location.hash = `#${encodeURIComponent(id)}`;
@@ -329,6 +363,11 @@
         .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; }
         .header-left a { color: #fff; text-decoration: none; }
         #header-clock { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
+        
+        /* Auth UI */
+        #user-profile { display: none; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 3px 12px; border-radius: 20px; border: 1px solid #333; }
+        #display-pic { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--accent); }
+
         #main-container { display: flex; flex: 1; }
         aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
         .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
@@ -388,7 +427,15 @@
         <img src="https://i.imgur.com/CcBLZ0O.png" style="width:28px; height:28px; border-radius:4px;">
         <a href="#home">Conquer The World 非公式ウィキ</a>
     </div>
-    <div id="header-clock">0000/00/00 00:00:00</div>
+    <div style="display:flex; align-items:center; gap:15px;">
+        <div id="header-clock">0000/00/00 00:00:00</div>
+        <button id="login-btn" class="btn btn-small" onclick="login()">Login</button>
+        <div id="user-profile">
+            <img id="display-pic" src="">
+            <span id="display-name" style="font-size:0.75rem; color:#fff;"></span>
+            <span onclick="logout()" style="cursor:pointer; font-size:0.7rem; color:#888; margin-left:5px;">Logout</span>
+        </div>
+    </div>
 </header>
 
 <div id="main-container">
@@ -455,7 +502,7 @@
             <section id="editor-area">
                 <h2 style="color:#fff; margin-top:0;">EDIT PAGE</h2>
                 <div style="background: rgba(77, 151, 255, 0.1); padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 0.8rem; border: 1px solid var(--accent);">
-                    ⚠️ 保存には設定したパスワードが必要です（新規作成時は好きなパスを設定してください）。
+                    ⚠️ 保存には設定したパスワードが必要です。
                 </div>
                 <div id="editor-tools">
                     <button class="tool-btn" onclick="insertImage()">📷 画像挿入</button>
@@ -480,58 +527,9 @@
         <p>Conquer The World (CTW) 非公式ウィキへようこそ！<br>
         このサイトは、プレイヤー全員で作り上げる攻略・情報共有プラットフォームです。</p>
     </div>
-
     <div class="home-section">
-        <h3 class="home-h3">✨ 最新のアップデート</h3>
-        <div style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent);">
-            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li><b>❤ いいね機能</b>: 良いと思ったページには「いいね」を送って応援しましょう！</li>
-                <li><b>📷 画像投稿</b>: エディタの「画像挿入」ボタンから、簡単に画像を埋め込めるようになりました。</li>
-                <li><b>💬 返信機能</b>: チャットやコメントの発言をクリックして返信ができます。</li>
-                <li><b>🔒 編集保護</b>: 各ページにパスワードを設定できるようになりました。</li>
-                <li><b>🏠 ホーム保護</b>: トップページは編集できないようにロックされました。</li>
-                <li><b>📊 テーブル対応</b>: 表組みのデザインを強化しました。</li>
-            </ul>
-        </div>
-    </div>
-
-    <div class="home-section">
-        <h3 class="home-h3">📌 基本ルール</h3>
-        <div class="rule-card">
-            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li><b>自由な編集</b>: 誰でも新しいページの作成や編集が可能です。</li>
-                <li><b>マナーの遵守</b>: 荒らし行為、誹謗中傷、他者を不快にさせる表現は厳禁です。</li>
-                <li><b>文字数制限</b>: 1ページ最大10,000文字、1コメント最大500文字です。</li>
-            </ul>
-        </div>
-    </div>
-
-    <div class="home-section">
-        <h3 class="home-h3">💬 コミュニケーション機能</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #fff;">グローバルチャット</h4>
-                <p style="font-size: 0.85rem; color: #aaa;">右サイドバーで全ページ共通の会話が楽しめます。名前と削除用パスワードを入力して参加しましょう。</p>
-            </div>
-            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #fff;">ページ別コメント</h4>
-                <p style="font-size: 0.85rem; color: #aaa;">各ページ下部で議論が可能です。発言をクリックで返信できます。</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="home-section" style="background: rgba(255, 77, 77, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 77, 77, 0.2);">
-        <h3 class="home-h3" style="color: #ff4d4d; border-bottom-color: #ff4d4d;">⚠️ 投稿の削除について</h3>
-        <p style="font-size: 0.9rem; margin: 0;">
-            チャットやコメントを投稿する際は、必ず<b>「削除パスワード」</b>を設定してください。<br>
-            投稿横の「×」または「削除」ボタンを押し、設定したパスワードを入れることで消去できます。
-        </p>
-    </div>
-
-    <div class="home-section">
-        <h3 class="home-h3">🛠️ ページを新しく作るには？</h3>
-        <p>画面右下の青い「＋」ボタン、または左メニューの「ページ作成」からエディタを開けます。<br>
-        Markdown記法に対応しており、<code>## 見出し</code> や <code>![] (URL)</code> で画像を挿入できます。</p>
+        <h3 class="home-h3">✨ Account連携</h3>
+        <p style="font-size:0.9rem;">右上のLoginからGoogleログインすると、コメントやチャットでの名前入力が自動化されます。今後はログインユーザー限定の機能も追加予定です。</p>
     </div>
 </script>
 
