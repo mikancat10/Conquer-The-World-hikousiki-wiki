@@ -44,7 +44,7 @@
             if (user) {
                 loginBtn.style.display = 'none';
                 userArea.style.display = 'flex';
-                userArea.innerHTML = `<img src="${user.photoURL}" style="width:24px;height:24px;border-radius:50%;"><span style="font-size:0.8rem;cursor:pointer;" onclick="logout()">Logout</span>`;
+                userArea.innerHTML = `<img src="${user.photoURL}" style="width:24px;height:24px;border-radius:50%;"><span style="font-size:0.8rem;cursor:pointer;color:var(--accent);border-bottom:1px solid;" onclick="logout()">Logout</span>`;
                 if(document.getElementById('c-u')) { document.getElementById('c-u').value = user.displayName; document.getElementById('c-u').readOnly = true; }
                 if(document.getElementById('comment-user')) { document.getElementById('comment-user').value = user.displayName; document.getElementById('comment-user').readOnly = true; }
             } else {
@@ -55,27 +55,19 @@
             }
         });
 
-        // 修正：HTMLタグ内のURLは無視して、プレーンテキストのURLのみリンク化する
         function processText(text, isHTML = false) {
             if (!text) return "";
             let safeText = String(text);
-
-            // 禁止用語処理
             BANNED_KEYWORDS.forEach(word => {
                 const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
                 safeText = safeText.replace(reg, '***');
             });
-
             if (isHTML) {
-                // すでにHTML化されている場合、タグの属性（srcやhref）の中以外のURLをリンク化
                 const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
                 safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
             } else {
-                // プレーンテキスト（チャット等）用
                 safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
             }
-
-            // アンカーリンク
             safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
             return safeText;
         }
@@ -100,8 +92,7 @@
 
         async function init() {
             updateClock();
-            try {
-                const snap = await getDocs(collection(db, "pages"));
+            onSnapshot(collection(db, "pages"), (snap) => {
                 window.wikiData = {};
                 const cats = new Set(["未分類"]);
                 snap.forEach(d => {
@@ -111,7 +102,7 @@
                 });
                 renderSidebar(cats);
                 render();
-            } catch (e) { console.error(e); }
+            });
         }
 
         function renderSidebar(cats) {
@@ -227,7 +218,7 @@
             if(!q) return render();
             const results = Object.keys(window.wikiData).filter(id => id.toLowerCase().includes(q) || (window.wikiData[id].content || "").toLowerCase().includes(q));
             document.getElementById('page-title').innerText = `検索結果: ${q}`;
-            document.getElementById('wiki-view').innerHTML = results.length > 0 ? `<ul>${results.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>` : `<p>該当なし</p>`;
+            document.getElementById('wiki-view').innerHTML = results.length > 0 ? `<ul class="wiki-list">${results.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>` : `<p>該当なし</p>`;
         };
 
         window.openEditor = (pageId = "") => {
@@ -245,13 +236,15 @@
             if (isEd) {
                 const textarea = document.getElementById('e-ct');
                 if(targetId && window.wikiData[targetId]) {
+                    const d = window.wikiData[targetId];
                     document.getElementById('e-id').value = targetId;
                     document.getElementById('e-id').readOnly = true;
-                    textarea.value = window.wikiData[targetId].content || "";
-                    document.getElementById('e-ca').value = window.wikiData[targetId].category || "未分類";
+                    textarea.value = d.content || "";
+                    document.getElementById('e-ca').value = d.category || "未分類";
+                    document.getElementById('e-shared').value = d.editors ? d.editors.join(', ') : "";
                 } else {
                     document.getElementById('e-id').value = ""; document.getElementById('e-id').readOnly = false;
-                    textarea.value = ""; document.getElementById('e-ca').value = "";
+                    textarea.value = ""; document.getElementById('e-ca').value = ""; document.getElementById('e-shared').value = "";
                 }
                 document.getElementById('char-count').innerText = `${textarea.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
                 textarea.oninput = function() { document.getElementById('char-count').innerText = `${this.value.length} / ${MAX_CONTENT_LENGTH} 文字`; };
@@ -259,29 +252,27 @@
             }
 
             const hash = mode || 'home';
-            const commentSection = document.getElementById('page-comment-section');
-            const likeContainer = document.getElementById('like-container');
-            const editBtn = document.getElementById('edit-page-btn');
+            const view = document.getElementById('wiki-view');
+            const title = document.getElementById('page-title');
 
             if (hash === 'home') {
-                document.getElementById('page-title').innerText = "TOP PAGE";
-                document.getElementById('wiki-view').innerHTML = document.getElementById('home-content').innerHTML;
+                title.innerText = "記事一覧";
+                const pgs = Object.keys(window.wikiData);
+                view.innerHTML = `<ul class="wiki-list">${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>`;
                 document.getElementById('toc-box').style.display = 'none';
-                commentSection.style.display = 'none';
-                likeContainer.style.display = 'none';
-                editBtn.style.display = 'none';
+                document.getElementById('page-comment-section').style.display = 'none';
+                document.getElementById('like-container').style.display = 'none';
+                document.getElementById('edit-page-btn').style.display = 'none';
             } else {
                 const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類", likes: 0 };
-                document.getElementById('page-title').innerText = processText(hash);
-                // Markdown変換後にHTMLモードでURL処理を行う
+                title.innerText = processText(hash);
                 const rawHTML = marked.parse(data.content || "");
-                document.getElementById('wiki-view').innerHTML = processText(rawHTML, true);
-                
+                view.innerHTML = processText(rawHTML, true);
                 generateTOC();
-                commentSection.style.display = 'block';
-                likeContainer.style.display = 'flex';
-                editBtn.style.display = 'block';
-                editBtn.onclick = () => openEditor(hash);
+                document.getElementById('page-comment-section').style.display = 'block';
+                document.getElementById('like-container').style.display = 'flex';
+                document.getElementById('edit-page-btn').style.display = 'block';
+                document.getElementById('edit-page-btn').onclick = () => openEditor(hash);
                 watchComments(hash);
                 watchLikes(hash);
             }
@@ -308,18 +299,25 @@
             const content = document.getElementById('e-ct').value;
             const category = document.getElementById('e-ca').value;
             const pass = document.getElementById('e-pass').value;
+            const editors = document.getElementById('e-shared').value.split(',').map(s => s.trim()).filter(s => s);
 
-            if(!id || !pass || id.toLowerCase() === "home" || content.length > MAX_CONTENT_LENGTH || !isSafe(id) || !isSafe(content) || !isSafe(category)) return;
+            if(!id || id.toLowerCase() === "home" || content.length > MAX_CONTENT_LENGTH || !isSafe(id) || !isSafe(content) || !isSafe(category)) return;
             
             const docRef = doc(db, "pages", id);
             const snap = await getDoc(docRef);
-            if (snap.exists() && snap.data().pass && snap.data().pass !== pass) return alert("パスワードが正しくありません。");
+            
+            const isAuthorized = snap.exists() && (
+                (snap.data().pass && snap.data().pass === pass) || 
+                (currentUser && snap.data().editors && snap.data().editors.includes(currentUser.email))
+            );
+
+            if (snap.exists() && !isAuthorized) return alert("編集権限がありません。");
 
             await setDoc(docRef, { 
-                content: content, category: category || "未分類", pass: pass, 
+                content, category: category || "未分類", pass, editors, 
                 updatedAt: serverTimestamp(), likes: snap.exists() ? (snap.data().likes || 0) : 0,
                 lastEditor: currentUser ? currentUser.displayName : "Anonymous"
-            });
+            }, { merge: true });
             alert("保存しました！"); location.hash = `#${encodeURIComponent(id)}`; location.reload();
         };
 
@@ -331,11 +329,18 @@
         :root { --bg: #0d0d0d; --side: rgba(22, 22, 22, 0.9); --border: #2a2a2a; --accent: #4d97ff; --text: #d0d0d0; }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Noto Sans JP', sans-serif; color: var(--text); display: flex; flex-direction: column; min-height: 100vh; background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://i.imgur.com/j2wlBo1.png'); background-size: cover; background-position: center; background-attachment: fixed; background-color: var(--bg); }
+        
         header { height: 50px; background: rgba(0, 0, 0, 0.9); border-bottom: 2px solid var(--accent); display: flex; align-items: center; padding: 0 15px; position: sticky; top: 0; z-index: 100; justify-content: space-between; }
-        .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; }
+        .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; flex-shrink: 0; }
         .header-left a { color: #fff; text-decoration: none; }
-        .header-right { display: flex; align-items: center; gap: 15px; }
-        #header-clock { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
+        
+        /* 右側エリアの修正: 要素が重ならないように設定 */
+        .header-right { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
+        #header-clock { font-family: monospace; color: var(--accent); font-size: 0.85rem; white-space: nowrap; }
+        #user-info { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; white-space: nowrap; }
+        #login-btn:hover { background: rgba(77, 151, 255, 0.1); }
+
         #main-container { display: flex; flex: 1; }
         aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
         .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
@@ -345,6 +350,12 @@
         article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; }
         .title-wrapper { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
         #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; margin: 0; }
+        
+        .wiki-list { list-style: none; padding: 0; }
+        .wiki-list li { border-bottom: 1px solid var(--border); }
+        .wiki-list a { color: var(--accent); text-decoration: none; display: block; padding: 10px; transition: 0.2s; }
+        .wiki-list a:hover { background: rgba(77, 151, 255, 0.1); padding-left: 15px; }
+
         .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
         #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
@@ -365,8 +376,6 @@
         .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
         .btn-small { padding: 5px 12px; font-size: 0.8rem; background: #333; }
         .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-        #user-info { display: flex; align-items: center; gap: 8px; }
         @media (max-width: 1100px) { #display-area { flex-direction: column; } aside#right-sidebar { width: 100%; position: static; } }
     </style>
 </head>
@@ -377,8 +386,10 @@
         <a href="#home">Conquer The World 非公式ウィキ</a>
     </div>
     <div class="header-right">
-        <button id="login-btn" onclick="login()">Login with Google</button>
-        <div id="user-info" style="display:none;"></div>
+        <div id="auth-area">
+            <button id="login-btn" onclick="login()">Login with Google</button>
+            <div id="user-info" style="display:none;"></div>
+        </div>
         <div id="header-clock">0000/00/00 00:00:00</div>
     </div>
 </header>
@@ -413,7 +424,10 @@
             <section id="editor-area">
                 <div style="display:flex; justify-content:space-between;"><h2 style="color:#fff;">EDIT</h2><span id="char-count" style="color:#666;">0 / 10000</span></div>
                 <div style="margin-bottom:10px;"><button class="btn btn-small" onclick="insertImage()">📷 画像挿入</button></div>
-                <input type="text" id="e-id" placeholder="ページ名" class="chat-input"><input type="text" id="e-ca" placeholder="カテゴリ" class="chat-input"><input type="password" id="e-pass" placeholder="保存パスワード" class="chat-input">
+                <input type="text" id="e-id" placeholder="ページ名" class="chat-input">
+                <input type="text" id="e-ca" placeholder="カテゴリ" class="chat-input">
+                <input type="password" id="e-pass" placeholder="保存パスワード（作成時のみ必須）" class="chat-input">
+                <input type="text" id="e-shared" placeholder="共同編集者のメール (カンマ区切り)" class="chat-input">
                 <textarea id="e-ct"></textarea>
                 <div style="display:flex; gap:10px; margin-top:10px;"><button class="btn" onclick="savePage()">保存</button><button class="btn" style="background:#444;" onclick="location.hash='#home'">戻る</button></div>
             </section>
@@ -421,6 +435,5 @@
     </main>
 </div>
 <a href="javascript:openEditor()" class="fab">+</a>
-<script id="home-content" type="text/template"><p>CTW非公式ウィキへようこそ！</p></script>
 </body>
 </html>
