@@ -32,34 +32,21 @@
 
         let currentUser = null;
 
-        // ログイン処理
         window.login = async () => {
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (e) { alert("ログインに失敗しました。"); }
+            try { await signInWithPopup(auth, provider); } catch (e) { alert("ログインに失敗しました。"); }
         };
-
         window.logout = () => signOut(auth);
 
-        // 認証状態の監視
         onAuthStateChanged(auth, (user) => {
             currentUser = user;
             const loginBtn = document.getElementById('login-btn');
             const userArea = document.getElementById('user-info');
-            
             if (user) {
                 loginBtn.style.display = 'none';
                 userArea.style.display = 'flex';
                 userArea.innerHTML = `<img src="${user.photoURL}" style="width:24px;height:24px;border-radius:50%;"><span style="font-size:0.8rem;cursor:pointer;" onclick="logout()">Logout</span>`;
-                // 入力欄の自動補完
-                if(document.getElementById('c-u')) {
-                    document.getElementById('c-u').value = user.displayName;
-                    document.getElementById('c-u').readOnly = true;
-                }
-                if(document.getElementById('comment-user')) {
-                    document.getElementById('comment-user').value = user.displayName;
-                    document.getElementById('comment-user').readOnly = true;
-                }
+                if(document.getElementById('c-u')) { document.getElementById('c-u').value = user.displayName; document.getElementById('c-u').readOnly = true; }
+                if(document.getElementById('comment-user')) { document.getElementById('comment-user').value = user.displayName; document.getElementById('comment-user').readOnly = true; }
             } else {
                 loginBtn.style.display = 'block';
                 userArea.style.display = 'none';
@@ -68,23 +55,33 @@
             }
         });
 
-        // 共通：テキスト処理
-        function processText(text) {
+        // 修正：HTMLタグ内のURLは無視して、プレーンテキストのURLのみリンク化する
+        function processText(text, isHTML = false) {
             if (!text) return "";
             let safeText = String(text);
+
+            // 禁止用語処理
             BANNED_KEYWORDS.forEach(word => {
-                const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const reg = new RegExp(escapedWord, 'gi');
+                const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
                 safeText = safeText.replace(reg, '***');
             });
-            safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+
+            if (isHTML) {
+                // すでにHTML化されている場合、タグの属性（srcやhref）の中以外のURLをリンク化
+                const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
+                safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+            } else {
+                // プレーンテキスト（チャット等）用
+                safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+            }
+
+            // アンカーリンク
             safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
             return safeText;
         }
 
         function isSafe(text) {
-            const found = BANNED_KEYWORDS.find(word => text.includes(word));
-            if (found) { alert(`不適切な表現が含まれています。`); return false; }
+            if (BANNED_KEYWORDS.some(word => text.includes(word))) { alert(`不適切な表現が含まれています。`); return false; }
             return true;
         }
 
@@ -96,9 +93,7 @@
             const now = new Date();
             const clockEl = document.getElementById('header-clock');
             if(clockEl) {
-                const p = [now.getFullYear(), String(now.getMonth()+1).padStart(2,'0'), String(now.getDate()).padStart(2,'0')];
-                const t = [String(now.getHours()).padStart(2,'0'), String(now.getMinutes()).padStart(2,'0'), String(now.getSeconds()).padStart(2,'0')];
-                clockEl.innerText = `${p.join('/')} ${t.join(':')}`;
+                clockEl.innerText = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
             }
         }
         setInterval(updateClock, 1000);
@@ -140,29 +135,23 @@
             try {
                 const docRef = doc(db, colPath, docId);
                 const snap = await getDoc(docRef);
-                if(snap.exists() && snap.data().pass === pass) {
-                    await deleteDoc(docRef);
-                    alert("削除しました。");
-                } else {
-                    alert("パスワードが違います。");
-                }
+                if(snap.exists() && snap.data().pass === pass) { await deleteDoc(docRef); alert("削除しました。"); }
+                else { alert("パスワードが違います。"); }
             } catch(e) { alert("エラーが発生しました。"); }
         };
 
         window.addLike = async () => {
             const hash = decodeURIComponent(location.hash.slice(1)).split('#')[0];
             if(!hash || hash === 'home' || hash === 'editor') return;
-            const docRef = doc(db, "pages", hash);
-            await updateDoc(docRef, { likes: increment(1) });
+            await updateDoc(doc(db, "pages", hash), { likes: increment(1) });
         };
 
         function watchLikes(pageId) {
             if(likeUnsubscribe) likeUnsubscribe();
             likeUnsubscribe = onSnapshot(doc(db, "pages", pageId), (s) => {
                 const data = s.data();
-                const count = data ? (data.likes || 0) : 0;
                 const el = document.getElementById('like-count');
-                if(el) el.innerText = count;
+                if(el) el.innerText = data ? (data.likes || 0) : 0;
             });
         }
 
@@ -187,9 +176,7 @@
             const u = document.getElementById('c-u').value || "名無し";
             const p = document.getElementById('c-p').value;
             const t = document.getElementById('c-t');
-            if(!t.value.trim()) return;
-            if(!p) return alert("削除用パスワードを設定してください。");
-            if(!isSafe(u) || !isSafe(t.value)) return;
+            if(!t.value.trim() || !p || !isSafe(u) || !isSafe(t.value)) return;
             await addDoc(collection(db, "global_chat"), { user: u, text: t.value, pass: p, createdAt: serverTimestamp(), uid: currentUser ? currentUser.uid : null });
             t.value = "";
         };
@@ -199,22 +186,15 @@
             const u = document.getElementById('comment-user').value || "名無し";
             const p = document.getElementById('comment-pass').value;
             const t = document.getElementById('comment-text');
-            if(!t.value.trim()) return;
-            if(!p) return alert("削除用パスワードを設定してください。");
-            if(t.value.length > MAX_COMMENT_LENGTH) return alert("文字数制限オーバー");
-            if(!isSafe(u) || !isSafe(t.value)) return;
-
-            await addDoc(collection(db, "pages", hash, "comments"), {
-                user: u, text: t.value, pass: p, createdAt: serverTimestamp(), uid: currentUser ? currentUser.uid : null
-            });
+            if(!t.value.trim() || !p || t.value.length > MAX_COMMENT_LENGTH || !isSafe(u) || !isSafe(t.value)) return;
+            await addDoc(collection(db, "pages", hash, "comments"), { user: u, text: t.value, pass: p, createdAt: serverTimestamp(), uid: currentUser ? currentUser.uid : null });
             t.value = "";
         };
 
         function watchComments(pageId) {
             if (commentUnsubscribe) commentUnsubscribe();
             const colPath = `pages/${pageId}/comments`;
-            const q = query(collection(db, colPath), orderBy("createdAt", "desc"));
-            commentUnsubscribe = onSnapshot(q, (s) => {
+            commentUnsubscribe = onSnapshot(query(collection(db, colPath), orderBy("createdAt", "desc")), (s) => {
                 const list = document.getElementById('page-comments-list');
                 if(!list) return;
                 list.innerHTML = s.docs.map(d => {
@@ -237,8 +217,7 @@
             if(!url) return;
             const textarea = document.getElementById('e-ct');
             const pos = textarea.selectionStart;
-            const text = textarea.value;
-            textarea.value = text.substring(0, pos) + `\n![](${url})\n` + text.substring(textarea.selectionEnd);
+            textarea.value = textarea.value.substring(0, pos) + `\n![](${url})\n` + textarea.value.substring(textarea.selectionEnd);
             textarea.focus();
             document.getElementById('char-count').innerText = `${textarea.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
         };
@@ -260,7 +239,6 @@
             const hashFull = decodeURIComponent(location.hash.slice(1));
             const [mode, targetId] = hashFull.split('#');
             const isEd = mode === 'editor';
-            
             document.getElementById('display-area').style.display = isEd ? 'none' : 'flex';
             document.getElementById('editor-area').style.display = isEd ? 'block' : 'none';
             
@@ -272,18 +250,11 @@
                     textarea.value = window.wikiData[targetId].content || "";
                     document.getElementById('e-ca').value = window.wikiData[targetId].category || "未分類";
                 } else {
-                    document.getElementById('e-id').value = "";
-                    document.getElementById('e-id').readOnly = false;
-                    textarea.value = "";
-                    document.getElementById('e-ca').value = "";
+                    document.getElementById('e-id').value = ""; document.getElementById('e-id').readOnly = false;
+                    textarea.value = ""; document.getElementById('e-ca').value = "";
                 }
-                document.getElementById('e-pass').value = "";
-                
-                const count = textarea.value.length;
-                document.getElementById('char-count').innerText = `${count} / ${MAX_CONTENT_LENGTH} 文字`;
-                textarea.oninput = function() {
-                    document.getElementById('char-count').innerText = `${this.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
-                };
+                document.getElementById('char-count').innerText = `${textarea.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
+                textarea.oninput = function() { document.getElementById('char-count').innerText = `${this.value.length} / ${MAX_CONTENT_LENGTH} 文字`; };
                 return;
             }
 
@@ -302,8 +273,9 @@
             } else {
                 const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類", likes: 0 };
                 document.getElementById('page-title').innerText = processText(hash);
+                // Markdown変換後にHTMLモードでURL処理を行う
                 const rawHTML = marked.parse(data.content || "");
-                document.getElementById('wiki-view').innerHTML = processText(rawHTML);
+                document.getElementById('wiki-view').innerHTML = processText(rawHTML, true);
                 
                 generateTOC();
                 commentSection.style.display = 'block';
@@ -337,35 +309,18 @@
             const category = document.getElementById('e-ca').value;
             const pass = document.getElementById('e-pass').value;
 
-            if(!id) return alert("ページ名を入力してください。");
-            if(!pass) return alert("編集・保存用パスワードを入力してください。");
-            if(id.toLowerCase() === "home") return alert("その名前は使用できません。");
-            if(content.length > MAX_CONTENT_LENGTH) return alert("文字数制限オーバー");
-            if(!isSafe(id) || !isSafe(content) || !isSafe(category)) return;
+            if(!id || !pass || id.toLowerCase() === "home" || content.length > MAX_CONTENT_LENGTH || !isSafe(id) || !isSafe(content) || !isSafe(category)) return;
             
             const docRef = doc(db, "pages", id);
             const snap = await getDoc(docRef);
-
-            if (snap.exists()) {
-                const existingData = snap.data();
-                if (existingData.pass && existingData.pass !== pass) {
-                    return alert("パスワードが正しくありません。編集権限がありません。");
-                }
-            }
-
-            const currentLikes = snap.exists() ? (snap.data().likes || 0) : 0;
+            if (snap.exists() && snap.data().pass && snap.data().pass !== pass) return alert("パスワードが正しくありません。");
 
             await setDoc(docRef, { 
-                content: content, 
-                category: category || "未分類", 
-                pass: pass,
-                updatedAt: serverTimestamp(),
-                likes: currentLikes,
+                content: content, category: category || "未分類", pass: pass, 
+                updatedAt: serverTimestamp(), likes: snap.exists() ? (snap.data().likes || 0) : 0,
                 lastEditor: currentUser ? currentUser.displayName : "Anonymous"
             });
-            alert("保存しました！");
-            location.hash = `#${encodeURIComponent(id)}`;
-            location.reload();
+            alert("保存しました！"); location.hash = `#${encodeURIComponent(id)}`; location.reload();
         };
 
         window.onhashchange = render;
@@ -376,70 +331,46 @@
         :root { --bg: #0d0d0d; --side: rgba(22, 22, 22, 0.9); --border: #2a2a2a; --accent: #4d97ff; --text: #d0d0d0; }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Noto Sans JP', sans-serif; color: var(--text); display: flex; flex-direction: column; min-height: 100vh; background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://i.imgur.com/j2wlBo1.png'); background-size: cover; background-position: center; background-attachment: fixed; background-color: var(--bg); }
-        
         header { height: 50px; background: rgba(0, 0, 0, 0.9); border-bottom: 2px solid var(--accent); display: flex; align-items: center; padding: 0 15px; position: sticky; top: 0; z-index: 100; justify-content: space-between; }
         .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; }
         .header-left a { color: #fff; text-decoration: none; }
         .header-right { display: flex; align-items: center; gap: 15px; }
         #header-clock { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
-        
         #main-container { display: flex; flex: 1; }
         aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
-        
         .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
-        
         main { flex: 1; min-width: 0; }
         #content-body { padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
         #display-area { display: flex; gap: 20px; align-items: flex-start; }
         article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; }
-        
         .title-wrapper { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
         #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; margin: 0; }
-        
         .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
-        .like-btn:hover { background: #ff4d4d; color: #fff; }
-
-        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 10px 0; border-radius: 4px; }
+        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
         #wiki-view th { background: rgba(77, 151, 255, 0.2); color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
         #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; text-align: center; }
-        
         aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
         .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
-        
         #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
         .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
         .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
         .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
-        
         .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
         aside ul { list-style: none; padding: 0; margin: 0 0 0 10px; font-size: 0.85rem; }
         aside a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
-        
         #editor-area { background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; display: none; }
-        #editor-tools { margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
         #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; font-family: monospace; resize: vertical; }
-        
         .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
-        .btn:hover { opacity: 0.8; }
         .btn-small { padding: 5px 12px; font-size: 0.8rem; background: #333; }
-        
         .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        
-        /* ログイン関連UI */
-        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.3s; }
-        #login-btn:hover { background: var(--accent); color: white; }
+        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         #user-info { display: flex; align-items: center; gap: 8px; }
-
-        @media (max-width: 1100px) {
-            #display-area { flex-direction: column; }
-            aside#right-sidebar { width: 100%; position: static; }
-        }
+        @media (max-width: 1100px) { #display-area { flex-direction: column; } aside#right-sidebar { width: 100%; position: static; } }
     </style>
 </head>
 <body>
-
 <header>
     <div class="header-left">
         <img src="https://i.imgur.com/CcBLZ0O.png" style="width:28px; height:28px; border-radius:4px;">
@@ -451,108 +382,45 @@
         <div id="header-clock">0000/00/00 00:00:00</div>
     </div>
 </header>
-
 <div id="main-container">
     <aside id="left-sidebar">
         <div class="search-box"><input type="text" id="wiki-search" placeholder="ページ検索..." oninput="searchWiki()"></div>
         <div class="menu-label">MENU</div>
-        <ul>
-            <li><a href="#home">🏠 トップページ</a></li>
-            <li><a href="javascript:openEditor()">📝 ページ作成</a></li>
-        </ul>
+        <ul><li><a href="#home">🏠 トップページ</a></li><li><a href="javascript:openEditor()">📝 ページ作成</a></li></ul>
         <div id="menu-list"></div>
-        <div style="margin-top:30px; padding:15px; border-top:1px solid var(--border); font-size:0.7rem; color:#666;">
-            <b>ADMIN</b><br>
-            <a href="https://discord.com/users/1424679085396725770" target="_blank" style="color:var(--accent); text-decoration:none;">Discord: @mikancat10</a>
-        </div>
     </aside>
-
     <main>
         <div id="content-body">
             <div id="display-area">
                 <article id="wiki-card">
-                    <div class="title-wrapper">
-                        <div id="page-title">Loading...</div>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <button id="edit-page-btn" class="btn btn-small" style="display:none;">📝 編集</button>
-                            <div id="like-container" style="display:none; align-items:center; gap:10px;">
-                                <button class="like-btn" onclick="addLike()">❤ <span id="like-count">0</span></button>
-                            </div>
-                        </div>
-                    </div>
+                    <div class="title-wrapper"><div id="page-title">Loading...</div><div style="display:flex; align-items:center; gap:10px;"><button id="edit-page-btn" class="btn btn-small" style="display:none;">📝 編集</button><div id="like-container" style="display:none; align-items:center; gap:10px;"><button class="like-btn" onclick="addLike()">❤ <span id="like-count">0</span></button></div></div></div>
                     <div id="wiki-view"></div>
-
                     <section id="page-comment-section" style="display:none;">
                         <h3 style="color:#fff; font-size:1.2rem; margin-bottom:20px;">コメント</h3>
                         <div style="margin-bottom:25px; background:rgba(0,0,0,0.3); padding:15px; border-radius:8px;">
-                            <div style="display:flex; gap:10px; margin-bottom:10px;">
-                                <input type="text" id="comment-user" class="chat-input" placeholder="名前" style="flex:1;">
-                                <input type="password" id="comment-pass" class="chat-input" placeholder="削除パスワード" style="flex:1;">
-                            </div>
-                            <textarea id="comment-text" class="chat-input" placeholder="コメントを入力（500文字以内）" style="height:80px; resize:none;"></textarea>
-                            <button class="btn" style="margin-top:10px; width:100%;" onclick="sendComment()">コメントを投稿</button>
+                            <div style="display:flex; gap:10px; margin-bottom:10px;"><input type="text" id="comment-user" class="chat-input" placeholder="名前" style="flex:1;"><input type="password" id="comment-pass" class="chat-input" placeholder="削除パスワード" style="flex:1;"></div>
+                            <textarea id="comment-text" class="chat-input" placeholder="コメントを入力" style="height:80px; resize:none;"></textarea>
+                            <button class="btn" style="width:100%;" onclick="sendComment()">投稿</button>
                         </div>
                         <div id="page-comments-list"></div>
                     </section>
                 </article>
-
                 <aside id="right-sidebar">
-                    <div class="widget">
-                        <div class="widget-title">GLOBAL CHAT</div>
-                        <div id="chat-list"></div>
-                        <div style="display:flex; gap:5px; margin-bottom:5px;">
-                            <input type="text" id="c-u" class="chat-input" placeholder="名前" style="flex:1;">
-                            <input type="password" id="c-p" class="chat-input" placeholder="削除パス" style="flex:1;">
-                        </div>
-                        <input type="text" id="c-t" class="chat-input" placeholder="メッセージ..." onkeydown="if(event.key==='Enter') sendChat()">
-                    </div>
-                    <div class="widget" id="toc-box">
-                        <div class="widget-title">CONTENTS</div>
-                        <ul id="toc-list" style="list-style:none; padding:0; font-size:0.8rem;"></ul>
-                    </div>
+                    <div class="widget"><div class="widget-title">GLOBAL CHAT</div><div id="chat-list"></div><div style="display:flex; gap:5px;"><input type="text" id="c-u" class="chat-input" placeholder="名前" style="flex:1;"><input type="password" id="c-p" class="chat-input" placeholder="パス" style="flex:1;"></div><input type="text" id="c-t" class="chat-input" placeholder="メッセージ..." onkeydown="if(event.key==='Enter') sendChat()"></div>
+                    <div class="widget" id="toc-box"><div class="widget-title">CONTENTS</div><ul id="toc-list" style="list-style:none; padding:0; font-size:0.8rem;"></ul></div>
                 </aside>
             </div>
-
             <section id="editor-area">
-                <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                    <h2 style="color:#fff; margin-top:0;">EDIT PAGE</h2>
-                    <span id="char-count" style="font-size:0.9rem; color:#666;">0 / 10000 文字</span>
-                </div>
-                <div style="background: rgba(77, 151, 255, 0.1); padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 0.8rem; border: 1px solid var(--accent);">
-                    ⚠️ 保存には設定したパスワードが必要です。ログインして保存すると編集者名が記録されます。
-                </div>
-                <div id="editor-tools">
-                    <button class="tool-btn" onclick="insertImage()">📷 画像挿入</button>
-                </div>
-                <input type="text" id="e-id" placeholder="ページ名" class="chat-input" style="height:45px; font-size:1rem;">
-                <input type="text" id="e-ca" placeholder="カテゴリー" class="chat-input">
-                <input type="password" id="e-pass" placeholder="編集・保存用パスワード（必須）" class="chat-input">
-                <textarea id="e-ct" placeholder="Markdown形式..."></textarea>
-                <div style="display:flex; gap:10px; margin-top:20px;">
-                    <button class="btn" onclick="savePage()">💾 ページを保存</button>
-                    <button class="btn" style="background:#444;" onclick="location.hash='#home'">キャンセル</button>
-                </div>
+                <div style="display:flex; justify-content:space-between;"><h2 style="color:#fff;">EDIT</h2><span id="char-count" style="color:#666;">0 / 10000</span></div>
+                <div style="margin-bottom:10px;"><button class="btn btn-small" onclick="insertImage()">📷 画像挿入</button></div>
+                <input type="text" id="e-id" placeholder="ページ名" class="chat-input"><input type="text" id="e-ca" placeholder="カテゴリ" class="chat-input"><input type="password" id="e-pass" placeholder="保存パスワード" class="chat-input">
+                <textarea id="e-ct"></textarea>
+                <div style="display:flex; gap:10px; margin-top:10px;"><button class="btn" onclick="savePage()">保存</button><button class="btn" style="background:#444;" onclick="location.hash='#home'">戻る</button></div>
             </section>
         </div>
     </main>
 </div>
-
 <a href="javascript:openEditor()" class="fab">+</a>
-
-<script id="home-content" type="text/template">
-    <div class="home-section">
-        <p>Conquer The World (CTW) 非公式ウィキへようこそ！</p>
-    </div>
-    <div class="home-section">
-        <h3 class="home-h3">✨ 最新のアップデート</h3>
-        <div style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent);">
-            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li><b>👤 ログイン機能</b>: Googleアカウントでログインできるようになりました。</li>
-                <li><b>🔗 自動補完</b>: ログイン中は投稿時の「名前」が自動で入力されます。</li>
-            </ul>
-        </div>
-    </div>
-</script>
-
+<script id="home-content" type="text/template"><p>CTW非公式ウィキへようこそ！</p></script>
 </body>
 </html>
