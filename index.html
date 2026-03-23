@@ -55,41 +55,31 @@
             }
         });
 
-function processText(text, isHTML = false) {
-    if (!text) return "";
-    let safeText = String(text);
+        // 修正された processText 関数
+        function processText(text, isHTML = false) {
+            if (!text) return "";
+            let safeText = String(text);
 
-    // 画像タグ（src="..."）の中身を一時的に退避させる（URL破壊防止）
-    const images = [];
-    if (isHTML) {
-        safeText = safeText.replace(/<img [^>]*src="([^"]+)"[^>]*>/g, (match, src) => {
-            images.push(src);
-            return `__IMG_PLACEHOLDER_${images.length - 1}__`;
-        });
-    }
+            // 1. NGワード置換（URLの中身も含めて一旦置換）
+            BANNED_KEYWORDS.forEach(word => {
+                const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                safeText = safeText.replace(reg, '***');
+            });
 
-    // NGワード置換
-    BANNED_KEYWORDS.forEach(word => {
-        const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        safeText = safeText.replace(reg, '***');
-    });
+            if (isHTML) {
+                // 2. 既にタグになっている <img src="..."> や <a href="..."> のURLをリンク化から除外する
+                // 属性値以外の場所にあるURLだけを <a> タグにする
+                const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
+                safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+            } else {
+                // プレーンテキスト（チャット等）の場合は単純にリンク化
+                safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+            }
 
-    // 退避させた画像URLを元に戻す
-    if (isHTML) {
-        images.forEach((src, i) => {
-            safeText = safeText.replace(`__IMG_PLACEHOLDER_${i}__`, `<img src="${src}" style="max-width:100%; height:auto; display:block; margin:20px 0; border-radius:6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">`);
-        });
-        
-        // URLのリンク化
-        const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
-        safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
-    } else {
-        safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
-    }
-
-    safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
-    return safeText;
-}
+            // アンカー（>>レスポンス）の処理
+            safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
+            return safeText;
+        }
 
         function isSafe(text) {
             if (BANNED_KEYWORDS.some(word => text.includes(word))) { alert(`不適切な表現が含まれています。`); return false; }
@@ -286,6 +276,7 @@ function processText(text, isHTML = false) {
                 const data = window.wikiData[hash] || { content: "# 404\nNot Found", category: "未分類", likes: 0 };
                 title.innerText = processText(hash);
                 const rawHTML = marked.parse(data.content || "");
+                // HTMLに変換した後に、URLがタグの属性値（src, href）以外にある場合のみリンク化するように修正
                 view.innerHTML = processText(rawHTML, true);
                 generateTOC();
                 document.getElementById('page-comment-section').style.display = 'block';
@@ -353,7 +344,6 @@ function processText(text, isHTML = false) {
         .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; flex-shrink: 0; }
         .header-left a { color: #fff; text-decoration: none; }
         
-        /* 右側エリアの修正: 要素が重ならないように設定 */
         .header-right { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
         #header-clock { font-family: monospace; color: var(--accent); font-size: 0.85rem; white-space: nowrap; }
         #user-info { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
@@ -376,7 +366,10 @@ function processText(text, isHTML = false) {
         .wiki-list a:hover { background: rgba(77, 151, 255, 0.1); padding-left: 15px; }
 
         .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
+        
+        /* Wiki内の画像表示設定 */
         #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        
         #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
         #wiki-view th { background: rgba(77, 151, 255, 0.2); color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
         #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; text-align: center; }
