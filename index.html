@@ -55,22 +55,41 @@
             }
         });
 
-        function processText(text, isHTML = false) {
-            if (!text) return "";
-            let safeText = String(text);
-            BANNED_KEYWORDS.forEach(word => {
-                const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                safeText = safeText.replace(reg, '***');
-            });
-            if (isHTML) {
-                const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
-                safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
-            } else {
-                safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
-            }
-            safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
-            return safeText;
-        }
+function processText(text, isHTML = false) {
+    if (!text) return "";
+    let safeText = String(text);
+
+    // 画像タグ（src="..."）の中身を一時的に退避させる（URL破壊防止）
+    const images = [];
+    if (isHTML) {
+        safeText = safeText.replace(/<img [^>]*src="([^"]+)"[^>]*>/g, (match, src) => {
+            images.push(src);
+            return `__IMG_PLACEHOLDER_${images.length - 1}__`;
+        });
+    }
+
+    // NGワード置換
+    BANNED_KEYWORDS.forEach(word => {
+        const reg = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        safeText = safeText.replace(reg, '***');
+    });
+
+    // 退避させた画像URLを元に戻す
+    if (isHTML) {
+        images.forEach((src, i) => {
+            safeText = safeText.replace(`__IMG_PLACEHOLDER_${i}__`, `<img src="${src}" style="max-width:100%; height:auto; display:block; margin:20px 0; border-radius:6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">`);
+        });
+        
+        // URLのリンク化
+        const urlRegex = /(?<!src=["']|href=["'])(https?:\/\/[^\s<>"]+)/g;
+        safeText = safeText.replace(urlRegex, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+    } else {
+        safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
+    }
+
+    safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
+    return safeText;
+}
 
         function isSafe(text) {
             if (BANNED_KEYWORDS.some(word => text.includes(word))) { alert(`不適切な表現が含まれています。`); return false; }
