@@ -11,7 +11,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        // --- Auth機能の追加 ---
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -24,38 +23,52 @@
         };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        
-        // --- Auth初期化 ---
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-        let currentUser = null;
-
-        // ログイン状態の監視
-        onAuthStateChanged(auth, (user) => {
-            currentUser = user;
-            const loginBtn = document.getElementById('login-btn');
-            const userProfile = document.getElementById('user-profile');
-            if (user) {
-                loginBtn.style.display = 'none';
-                userProfile.style.display = 'flex';
-                document.getElementById('display-name').innerText = user.displayName;
-                document.getElementById('display-pic').src = user.photoURL;
-                // 名前入力欄を自動埋め
-                if(document.getElementById('comment-user')) document.getElementById('comment-user').value = user.displayName;
-                if(document.getElementById('c-u')) document.getElementById('c-u').value = user.displayName;
-            } else {
-                loginBtn.style.display = 'block';
-                userProfile.style.display = 'none';
-            }
-        });
-
-        window.login = () => signInWithPopup(auth, provider).catch(err => alert("ログインに失敗しました"));
-        window.logout = () => signOut(auth);
 
         const BANNED_KEYWORDS = ["暴力", "殺す", "死ね", "爆弾", "差別", "ヘイト", "犯罪", "グロ", "ガイジ"];
         const MAX_CONTENT_LENGTH = 10000;
         const MAX_COMMENT_LENGTH = 500;
 
+        let currentUser = null;
+
+        // ログイン処理
+        window.login = async () => {
+            try {
+                await signInWithPopup(auth, provider);
+            } catch (e) { alert("ログインに失敗しました。"); }
+        };
+
+        window.logout = () => signOut(auth);
+
+        // 認証状態の監視
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            const loginBtn = document.getElementById('login-btn');
+            const userArea = document.getElementById('user-info');
+            
+            if (user) {
+                loginBtn.style.display = 'none';
+                userArea.style.display = 'flex';
+                userArea.innerHTML = `<img src="${user.photoURL}" style="width:24px;height:24px;border-radius:50%;"><span style="font-size:0.8rem;cursor:pointer;" onclick="logout()">Logout</span>`;
+                // 入力欄の自動補完
+                if(document.getElementById('c-u')) {
+                    document.getElementById('c-u').value = user.displayName;
+                    document.getElementById('c-u').readOnly = true;
+                }
+                if(document.getElementById('comment-user')) {
+                    document.getElementById('comment-user').value = user.displayName;
+                    document.getElementById('comment-user').readOnly = true;
+                }
+            } else {
+                loginBtn.style.display = 'block';
+                userArea.style.display = 'none';
+                if(document.getElementById('c-u')) document.getElementById('c-u').readOnly = false;
+                if(document.getElementById('comment-user')) document.getElementById('comment-user').readOnly = false;
+            }
+        });
+
+        // 共通：テキスト処理
         function processText(text) {
             if (!text) return "";
             let safeText = String(text);
@@ -64,6 +77,7 @@
                 const reg = new RegExp(escapedWord, 'gi');
                 safeText = safeText.replace(reg, '***');
             });
+            safeText = safeText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:underline;">$1</a>');
             safeText = safeText.replace(/>>([^\s　]+)/g, '<span style="color:var(--accent); font-weight:bold; cursor:pointer;">&gt;&gt;$1</span>');
             return safeText;
         }
@@ -109,6 +123,7 @@
             const list = document.getElementById('menu-list');
             list.innerHTML = Array.from(cats).sort().map(c => {
                 const pgs = Object.keys(window.wikiData).filter(id => (window.wikiData[id].category || "未分類") === c);
+                if(pgs.length === 0) return "";
                 return `<div class="menu-label">${processText(c)}</div><ul>${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>`;
             }).join('');
         }
@@ -157,9 +172,10 @@
             chatList.innerHTML = s.docs.slice(-30).map(d => {
                 const data = d.data();
                 const u = data.user || "名無し";
+                const time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
                 return `<div class="msg" style="display:flex; justify-content:space-between; align-items:start;">
                     <div onclick="setReply('c-t', '${u}')" style="cursor:pointer; flex:1;">
-                        <b style="color:var(--accent);">${processText(u)}:</b> ${processText(data.text)}
+                        <b style="color:var(--accent);">${processText(u)}</b> <small style="color:#555;font-size:0.7rem;">${time}</small><br>${processText(data.text)}
                     </div>
                     <button class="del-btn" onclick="deleteMsg('global_chat', '${d.id}')">×</button>
                 </div>`;
@@ -174,13 +190,7 @@
             if(!t.value.trim()) return;
             if(!p) return alert("削除用パスワードを設定してください。");
             if(!isSafe(u) || !isSafe(t.value)) return;
-            await addDoc(collection(db, "global_chat"), { 
-                user: u, 
-                text: t.value, 
-                pass: p, 
-                createdAt: serverTimestamp(),
-                uid: currentUser ? currentUser.uid : null 
-            });
+            await addDoc(collection(db, "global_chat"), { user: u, text: t.value, pass: p, createdAt: serverTimestamp(), uid: currentUser ? currentUser.uid : null });
             t.value = "";
         };
 
@@ -195,8 +205,7 @@
             if(!isSafe(u) || !isSafe(t.value)) return;
 
             await addDoc(collection(db, "pages", hash, "comments"), {
-                user: u, text: t.value, pass: p, createdAt: serverTimestamp(),
-                uid: currentUser ? currentUser.uid : null
+                user: u, text: t.value, pass: p, createdAt: serverTimestamp(), uid: currentUser ? currentUser.uid : null
             });
             t.value = "";
         };
@@ -211,10 +220,10 @@
                 list.innerHTML = s.docs.map(d => {
                     const data = d.data();
                     const u = data.user || "名無し";
-                    const date = data.createdAt ? data.createdAt.toDate().toLocaleString() : "...";
+                    const date = data.createdAt ? data.createdAt.toDate().toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour: '2-digit', minute:'2-digit'}) : "...";
                     return `<div class="comment-item">
                         <div class="comment-meta">
-                            <span onclick="setReply('comment-text', '${u}')" style="cursor:pointer;"><b>${processText(u)}</b> <span>${date}</span></span>
+                            <span onclick="setReply('comment-text', '${u}')" style="cursor:pointer;"><b>${processText(u)}</b> <span style="margin-left:8px; opacity:0.7;">${date}</span></span>
                             <button class="del-btn" onclick="deleteMsg('${colPath}', '${d.id}')">削除</button>
                         </div>
                         <div class="comment-content">${processText(data.text)}</div>
@@ -231,6 +240,7 @@
             const text = textarea.value;
             textarea.value = text.substring(0, pos) + `\n![](${url})\n` + text.substring(textarea.selectionEnd);
             textarea.focus();
+            document.getElementById('char-count').innerText = `${textarea.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
         };
 
         window.searchWiki = () => {
@@ -255,18 +265,25 @@
             document.getElementById('editor-area').style.display = isEd ? 'block' : 'none';
             
             if (isEd) {
+                const textarea = document.getElementById('e-ct');
                 if(targetId && window.wikiData[targetId]) {
                     document.getElementById('e-id').value = targetId;
                     document.getElementById('e-id').readOnly = true;
-                    document.getElementById('e-ct').value = window.wikiData[targetId].content || "";
+                    textarea.value = window.wikiData[targetId].content || "";
                     document.getElementById('e-ca').value = window.wikiData[targetId].category || "未分類";
                 } else {
                     document.getElementById('e-id').value = "";
                     document.getElementById('e-id').readOnly = false;
-                    document.getElementById('e-ct').value = "";
+                    textarea.value = "";
                     document.getElementById('e-ca').value = "";
                 }
                 document.getElementById('e-pass').value = "";
+                
+                const count = textarea.value.length;
+                document.getElementById('char-count').innerText = `${count} / ${MAX_CONTENT_LENGTH} 文字`;
+                textarea.oninput = function() {
+                    document.getElementById('char-count').innerText = `${this.value.length} / ${MAX_CONTENT_LENGTH} 文字`;
+                };
                 return;
             }
 
@@ -344,7 +361,7 @@
                 pass: pass,
                 updatedAt: serverTimestamp(),
                 likes: currentLikes,
-                authorUid: currentUser ? currentUser.uid : null // 投稿者IDを記録
+                lastEditor: currentUser ? currentUser.displayName : "Anonymous"
             });
             alert("保存しました！");
             location.hash = `#${encodeURIComponent(id)}`;
@@ -359,18 +376,18 @@
         :root { --bg: #0d0d0d; --side: rgba(22, 22, 22, 0.9); --border: #2a2a2a; --accent: #4d97ff; --text: #d0d0d0; }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Noto Sans JP', sans-serif; color: var(--text); display: flex; flex-direction: column; min-height: 100vh; background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://i.imgur.com/j2wlBo1.png'); background-size: cover; background-position: center; background-attachment: fixed; background-color: var(--bg); }
+        
         header { height: 50px; background: rgba(0, 0, 0, 0.9); border-bottom: 2px solid var(--accent); display: flex; align-items: center; padding: 0 15px; position: sticky; top: 0; z-index: 100; justify-content: space-between; }
         .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; }
         .header-left a { color: #fff; text-decoration: none; }
+        .header-right { display: flex; align-items: center; gap: 15px; }
         #header-clock { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
         
-        /* Auth UI */
-        #user-profile { display: none; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 3px 12px; border-radius: 20px; border: 1px solid #333; }
-        #display-pic { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--accent); }
-
         #main-container { display: flex; flex: 1; }
         aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
+        
         .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
+        
         main { flex: 1; min-width: 0; }
         #content-body { padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
         #display-area { display: flex; gap: 20px; align-items: flex-start; }
@@ -378,42 +395,43 @@
         
         .title-wrapper { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
         #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; margin: 0; }
+        
         .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
         .like-btn:hover { background: #ff4d4d; color: #fff; }
 
         #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-
-        #wiki-view { overflow-x: auto; }
         #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
         #wiki-view th { background: rgba(77, 151, 255, 0.2); color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
         #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; text-align: center; }
-        #wiki-view tr:nth-child(even) { background: rgba(255,255,255,0.03); }
-        #wiki-view tr:hover { background: rgba(77, 151, 255, 0.1); }
-
+        
         aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
         .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
+        
         #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
         .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
         .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
         .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
         
-        #page-comment-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
-        .comment-item { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--accent); }
-        .comment-meta { font-size: 0.75rem; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-
         .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
         aside ul { list-style: none; padding: 0; margin: 0 0 0 10px; font-size: 0.85rem; }
         aside a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
         
-        #editor-area { display: none; background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; }
-        #editor-tools { margin-bottom: 10px; display: flex; gap: 10px; }
-        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; font-family: monospace; }
-        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; }
-        .btn-small { padding: 5px 12px; font-size: 0.8rem; background: #333; }
-        .tool-btn { background: #333; color: #eee; padding: 5px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+        #editor-area { background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; display: none; }
+        #editor-tools { margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
+        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; font-family: monospace; resize: vertical; }
         
-        .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .btn:hover { opacity: 0.8; }
+        .btn-small { padding: 5px 12px; font-size: 0.8rem; background: #333; }
+        
+        .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        
+        /* ログイン関連UI */
+        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.3s; }
+        #login-btn:hover { background: var(--accent); color: white; }
+        #user-info { display: flex; align-items: center; gap: 8px; }
+
         @media (max-width: 1100px) {
             #display-area { flex-direction: column; }
             aside#right-sidebar { width: 100%; position: static; }
@@ -427,14 +445,10 @@
         <img src="https://i.imgur.com/CcBLZ0O.png" style="width:28px; height:28px; border-radius:4px;">
         <a href="#home">Conquer The World 非公式ウィキ</a>
     </div>
-    <div style="display:flex; align-items:center; gap:15px;">
+    <div class="header-right">
+        <button id="login-btn" onclick="login()">Login with Google</button>
+        <div id="user-info" style="display:none;"></div>
         <div id="header-clock">0000/00/00 00:00:00</div>
-        <button id="login-btn" class="btn btn-small" onclick="login()">Login</button>
-        <div id="user-profile">
-            <img id="display-pic" src="">
-            <span id="display-name" style="font-size:0.75rem; color:#fff;"></span>
-            <span onclick="logout()" style="cursor:pointer; font-size:0.7rem; color:#888; margin-left:5px;">Logout</span>
-        </div>
     </div>
 </header>
 
@@ -500,9 +514,12 @@
             </div>
 
             <section id="editor-area">
-                <h2 style="color:#fff; margin-top:0;">EDIT PAGE</h2>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                    <h2 style="color:#fff; margin-top:0;">EDIT PAGE</h2>
+                    <span id="char-count" style="font-size:0.9rem; color:#666;">0 / 10000 文字</span>
+                </div>
                 <div style="background: rgba(77, 151, 255, 0.1); padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 0.8rem; border: 1px solid var(--accent);">
-                    ⚠️ 保存には設定したパスワードが必要です。
+                    ⚠️ 保存には設定したパスワードが必要です。ログインして保存すると編集者名が記録されます。
                 </div>
                 <div id="editor-tools">
                     <button class="tool-btn" onclick="insertImage()">📷 画像挿入</button>
@@ -524,12 +541,16 @@
 
 <script id="home-content" type="text/template">
     <div class="home-section">
-        <p>Conquer The World (CTW) 非公式ウィキへようこそ！<br>
-        このサイトは、プレイヤー全員で作り上げる攻略・情報共有プラットフォームです。</p>
+        <p>Conquer The World (CTW) 非公式ウィキへようこそ！</p>
     </div>
     <div class="home-section">
-        <h3 class="home-h3">✨ Account連携</h3>
-        <p style="font-size:0.9rem;">右上のLoginからGoogleログインすると、コメントやチャットでの名前入力が自動化されます。今後はログインユーザー限定の機能も追加予定です。</p>
+        <h3 class="home-h3">✨ 最新のアップデート</h3>
+        <div style="background: rgba(77, 151, 255, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent);">
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><b>👤 ログイン機能</b>: Googleアカウントでログインできるようになりました。</li>
+                <li><b>🔗 自動補完</b>: ログイン中は投稿時の「名前」が自動で入力されます。</li>
+            </ul>
+        </div>
     </div>
 </script>
 
