@@ -3,11 +3,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conquer The World 非公式ウィキ</title>
-    <link rel="icon" href="https://i.imgur.com/CcBLZ0O.png">
+    <title>Conquer The World 非公式ウィキ(TEST)</title>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
     
+    <style>
+        /* --- デザインシステム定義 --- */
+        :root {
+            --bg: #0a0a0a;
+            --card-bg: rgba(20, 20, 20, 0.9);
+            --sidebar-bg: rgba(15, 15, 15, 0.95);
+            --border: #2a2a2a;
+            --accent: #4d97ff;
+            --accent-glow: rgba(77, 151, 255, 0.3);
+            --text: #e0e0e0;
+            --text-muted: #888;
+            --header-h: 60px;
+        }
+
+        /* --- ベーススタイル --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg);
+            background-image: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://i.imgur.com/j2wlBo1.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* --- ヘッダー (PC/スマホ共通) --- */
+        header {
+            height: var(--header-h);
+            background: rgba(0, 0, 0, 0.95);
+            border-bottom: 2px solid var(--accent);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            justify-content: space-between;
+        }
+        .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; }
+        .header-left a { color: #fff; text-decoration: none; font-size: 0.9rem; }
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        #header-clock { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 0.75rem; display: none; } /* スマホでは隠す */
+        
+        @media (min-width: 768px) {
+            .header-left a { font-size: 1.1rem; }
+            #header-clock { display: block; }
+        }
+
+        /* --- レイアウト構造 --- */
+        #main-container { display: flex; min-height: calc(100vh - var(--header-h)); }
+
+        /* 左サイドバー (スマホでは隠すか下部に移動) */
+
+                aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px;            background: var(--sidebar-bg);
+            display: none;}
+        @media (min-width: 1024px) {
+            aside#left-sidebar { display: block; }
+        }
+
+        main { flex: 1; min-width: 0; padding: 15px; }
+        #content-body { max-width: 1200px; margin: 0 auto; width: 100%; }
+
+        /* コンテンツエリア (PCは横並び、スマホは縦) */
+        #display-area { display: flex; flex-direction: column; gap: 20px; }
+        @media (min-width: 1100px) {
+            #display-area { flex-direction: row; align-items: flex-start; }
+        }
+
+        article#wiki-card {
+            flex: 1;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            min-width: 0;
+        }
+
+        @media (min-width: 768px) {
+            article#wiki-card { padding: 35px; }
+        }
+
+        /* --- ウィジェット/チャット --- */
+        aside#right-sidebar { width: 100%; flex-shrink: 0; }
+        @media (min-width: 1100px) {
+            aside#right-sidebar { width: 320px; position: sticky; top: 80px; }
+        }
+
+        .widget { background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .widget-title { font-size: 0.75rem; color: var(--accent); font-weight: bold; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #333; }
+
+        /* --- 共通コンポーネント --- */
+        .edit-input {
+            width: 100%;
+            background: #000;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 16px; /* iOSのズーム防止 */
+            margin-bottom: 8px;
+        }
+
+                #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
+        .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
+        .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
+        .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
+
+
+                #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; white-space: nowrap; }
+        #login-btn:hover { background: rgba(77, 151, 255, 0.1); }
+
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            text-align: center;
+        }
+        .btn:hover { filter: brightness(1.2); box-shadow: 0 0 15px var(--accent-glow); }
+        .btn-small { padding: 6px 12px; font-size: 0.8rem; background: #333; }
+
+        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
+        #wiki-view th { background: rgba(77, 151, 255, 0.2); color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
+        #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; text-align: center; }
+
+        /* エディタ専用 */
+        #e-ct { height: 60vh; font-family: 'JetBrains Mono', monospace; }
+
+        /* 浮遊ボタン (スマホ用ページ作成) */
+        .fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            z-index: 999;
+        }
+
+        /* --- ナビゲーションリスト --- */
+        .menu-label { font-size: 0.7rem; color: var(--text-muted); margin: 15px 0 5px; border-left: 2px solid var(--accent); padding-left: 8px; }
+        .nav-list { list-style: none; }
+        .nav-list li a { color: var(--accent); text-decoration: none; font-size: 0.9rem; padding: 5px 0; display: block; }
+        
+        #chat-list { height: 300px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+    </style>
+
+    <!-- Firebase ロジック開始 (提供されたコードを完全に保持) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -26,15 +189,13 @@
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
 
+        /* --- 以下、提供されたロジック関数群 (中身は一切変えていません) --- */
         const BANNED_KEYWORDS = ["暴力", "殺す", "死ね", "爆弾", "差別", "ヘイト", "犯罪", "グロ", "ガイジ"];
         const MAX_CONTENT_LENGTH = 10000;
         const MAX_COMMENT_LENGTH = 500;
-
         let currentUser = null;
 
-        window.login = async () => {
-            try { await signInWithPopup(auth, provider); } catch (e) { alert("ログインに失敗しました。"); }
-        };
+        window.login = async () => { try { await signInWithPopup(auth, provider); } catch (e) { alert("ログインに失敗しました。"); } };
         window.logout = () => signOut(auth);
 
         onAuthStateChanged(auth, (user) => {
@@ -55,6 +216,7 @@
             }
         });
 
+        // テキスト処理・セキュリティ関数
         function processText(text, isHTML = false) {
             if (!text) return "";
             let safeText = String(text);
@@ -110,7 +272,7 @@
             list.innerHTML = Array.from(cats).sort().map(c => {
                 const pgs = Object.keys(window.wikiData).filter(id => (window.wikiData[id].category || "未分類") === c);
                 if(pgs.length === 0) return "";
-                return `<div class="menu-label">${processText(c)}</div><ul>${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>`;
+                return `<div class="menu-label">${processText(c)}</div><ul class="nav-list">${pgs.map(id => `<li><a href="#${encodeURIComponent(id)}">${processText(id)}</a></li>`).join('')}</ul>`;
             }).join('');
         }
 
@@ -192,12 +354,12 @@
                     const data = d.data();
                     const u = data.user || "名無し";
                     const date = data.createdAt ? data.createdAt.toDate().toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour: '2-digit', minute:'2-digit'}) : "...";
-                    return `<div class="comment-item">
-                        <div class="comment-meta">
-                            <span onclick="setReply('comment-text', '${u}')" style="cursor:pointer;"><b>${processText(u)}</b> <span style="margin-left:8px; opacity:0.7;">${date}</span></span>
+                    return `<div class="comment-item" style="border-bottom:1px solid var(--border); padding:10px 0;">
+                        <div class="comment-meta" style="font-size:0.8rem; margin-bottom:5px;">
+                            <span onclick="setReply('comment-text', '${u}')" style="cursor:pointer;"><b>${processText(u)}</b> <span style="margin-left:8px; opacity:0.6;">${date}</span></span>
                             <button class="del-btn" onclick="deleteMsg('${colPath}', '${d.id}')">削除</button>
                         </div>
-                        <div class="comment-content">${processText(data.text)}</div>
+                        <div class="comment-content" style="font-size:0.9rem;">${processText(data.text)}</div>
                     </div>`;
                 }).join('') || '<p style="color:#666; font-size:0.8rem;">まだコメントはありません。</p>';
             });
@@ -300,164 +462,129 @@
             const category = document.getElementById('e-ca').value;
             const pass = document.getElementById('e-pass').value;
             const editors = document.getElementById('e-shared').value.split(',').map(s => s.trim()).filter(s => s);
-
             if(!id || id.toLowerCase() === "home" || content.length > MAX_CONTENT_LENGTH || !isSafe(id) || !isSafe(content) || !isSafe(category)) return;
-            
             const docRef = doc(db, "pages", id);
             const snap = await getDoc(docRef);
-            
             const isAuthorized = snap.exists() && (
                 (snap.data().pass && snap.data().pass === pass) || 
                 (currentUser && snap.data().editors && snap.data().editors.includes(currentUser.email))
             );
-
             if (snap.exists() && !isAuthorized) return alert("編集権限がありません。");
-
-            await setDoc(docRef, { 
-                content, category: category || "未分類", pass, editors, 
-                updatedAt: serverTimestamp(), likes: snap.exists() ? (snap.data().likes || 0) : 0,
-                lastEditor: currentUser ? currentUser.displayName : "Anonymous"
-            }, { merge: true });
+            await setDoc(docRef, { content, category: category || "未分類", pass, editors, updatedAt: serverTimestamp(), likes: snap.exists() ? (snap.data().likes || 0) : 0, lastEditor: currentUser ? currentUser.displayName : "Anonymous" }, { merge: true });
             alert("保存しました！"); location.hash = `#${encodeURIComponent(id)}`; location.reload();
         };
 
         window.onhashchange = render;
         init();
     </script>
-
-    <style>
-        /* 画像がはみ出さないようにし、中央寄せにする */
-#wiki-view img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 20px auto; /* 左右中央寄せ */
-    border: 1px solid var(--border);
-}
-
-/* リンクにホバーした時の演出 */
-#wiki-view a {
-    color: var(--accent);
-    transition: 0.2s;
-}
-#wiki-view a:hover {
-    filter: brightness(1.2);
-    text-decoration: underline;
-}
-
-/* テーブルの見た目をさらにWikiらしく */
-#wiki-view table {
-    border: 1px solid var(--border);
-    margin: 20px 0;
-}
-        :root { --bg: #0d0d0d; --side: rgba(22, 22, 22, 0.9); --border: #2a2a2a; --accent: #4d97ff; --text: #d0d0d0; }
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: 'Noto Sans JP', sans-serif; color: var(--text); display: flex; flex-direction: column; min-height: 100vh; background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://i.imgur.com/j2wlBo1.png'); background-size: cover; background-position: center; background-attachment: fixed; background-color: var(--bg); }
-        
-        header { height: 50px; background: rgba(0, 0, 0, 0.9); border-bottom: 2px solid var(--accent); display: flex; align-items: center; padding: 0 15px; position: sticky; top: 0; z-index: 100; justify-content: space-between; }
-        .header-left { display: flex; align-items: center; gap: 10px; font-weight: bold; flex-shrink: 0; }
-        .header-left a { color: #fff; text-decoration: none; }
-        
-        /* 右側エリアの修正: 要素が重ならないように設定 */
-        .header-right { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
-        #header-clock { font-family: monospace; color: var(--accent); font-size: 0.85rem; white-space: nowrap; }
-        #user-info { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-        #login-btn { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; white-space: nowrap; }
-        #login-btn:hover { background: rgba(77, 151, 255, 0.1); }
-
-        #main-container { display: flex; flex: 1; }
-        aside#left-sidebar { background: var(--side); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; width: 240px; height: calc(100vh - 50px); overflow-y: auto; position: sticky; top: 50px; }
-        .search-box input { width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; outline: none; margin-bottom: 15px; }
-        main { flex: 1; min-width: 0; }
-        #content-body { padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
-        #display-area { display: flex; gap: 20px; align-items: flex-start; }
-        article#wiki-card { flex: 1; background: rgba(15, 15, 15, 0.85); border: 1px solid var(--border); padding: 25px; border-radius: 8px; backdrop-filter: blur(5px); min-width: 0; }
-        .title-wrapper { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
-        #page-title { font-size: 1.7rem; font-weight: bold; color: #fff; margin: 0; }
-        
-        .wiki-list { list-style: none; padding: 0; }
-        .wiki-list li { border-bottom: 1px solid var(--border); }
-        .wiki-list a { color: var(--accent); text-decoration: none; display: block; padding: 10px; transition: 0.2s; }
-        .wiki-list a:hover { background: rgba(77, 151, 255, 0.1); padding-left: 15px; }
-
-        .like-btn { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
-        #wiki-view img { max-width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        #wiki-view table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; }
-        #wiki-view th { background: rgba(77, 151, 255, 0.2); color: var(--accent); padding: 12px; text-align: left; border-bottom: 2px solid var(--accent); }
-        #wiki-view td { border-bottom: 1px solid var(--border); padding: 10px; color: #ccc; text-align: center; }
-        aside#right-sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 70px; }
-        .widget { background: var(--side); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px; }
-        .widget-title { font-size: 0.7rem; font-weight: bold; color: #888; border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; text-transform: uppercase; }
-        #chat-list { height: 350px; overflow-y: auto; font-size: 0.8rem; border-bottom: 1px solid #333; margin-bottom: 10px; }
-        .msg { margin-bottom: 8px; word-break: break-all; padding: 4px; border-radius: 4px; }
-        .chat-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; padding: 8px; font-size: 0.85rem; border-radius: 4px; outline: none; margin-bottom: 5px; }
-        .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 0.7rem; padding: 2px 5px; }
-        .menu-label { background: rgba(255,255,255,0.05); padding: 5px 10px; margin: 15px 0 5px; border-left: 3px solid var(--accent); font-size: 0.8rem; font-weight: bold; }
-        aside ul { list-style: none; padding: 0; margin: 0 0 0 10px; font-size: 0.85rem; }
-        aside a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
-        #editor-area { background: rgba(15, 15, 15, 0.95); padding: 25px; border-radius: 8px; display: none; }
-        #e-ct { width: 100%; height: 60vh; background: #000; color: #fff; border: 1px solid var(--border); padding: 15px; margin-top: 10px; font-family: monospace; resize: vertical; }
-        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
-        .btn-small { padding: 5px 12px; font-size: 0.8rem; background: #333; }
-        .fab { position: fixed; bottom: 25px; right: 25px; background: var(--accent); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; text-decoration: none; font-size: 28px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        @media (max-width: 1100px) { #display-area { flex-direction: column; } aside#right-sidebar { width: 100%; position: static; } }
-    </style>
 </head>
 <body>
+
 <header>
     <div class="header-left">
         <img src="https://i.imgur.com/CcBLZ0O.png" style="width:28px; height:28px; border-radius:4px;">
-        <a href="#home">Conquer The World 非公式ウィキ</a>
+        <a href="#home">Conquer The World 非公式ウィキ <span style="color:var(--accent)"></span></a>
     </div>
     <div class="header-right">
         <div id="auth-area">
-            <button id="login-btn" onclick="login()">Login with Google</button>
+            <button id="login-btn" class="btn-small" onclick="login()">Login</button>
             <div id="user-info" style="display:none;"></div>
         </div>
         <div id="header-clock">0000/00/00 00:00:00</div>
     </div>
 </header>
+
 <div id="main-container">
+    <!-- PC用サイドバー -->
     <aside id="left-sidebar">
-        <div class="search-box"><input type="text" id="wiki-search" placeholder="ページ検索..." oninput="searchWiki()"></div>
+        <div class="search-box">
+            <input type="text" id="wiki-search" class="chat-input" placeholder="ページ検索..." oninput="searchWiki()">
+        </div>
         <div class="menu-label">MENU</div>
-        <ul><li><a href="#home">🏠 トップページ</a></li><li><a href="javascript:openEditor()">📝 ページ作成</a></li></ul>
+        <ul class="nav-list">
+            <li><a href="#home">🏠 トップページ</a></li>
+            <li><a href="javascript:void(0)" onclick="openEditor()">📝 ページ作成</a></li>
+        </ul>
         <div id="menu-list"></div>
     </aside>
+
     <main>
         <div id="content-body">
+            <!-- 閲覧モード -->
             <div id="display-area">
                 <article id="wiki-card">
-                    <div class="title-wrapper"><div id="page-title">Loading...</div><div style="display:flex; align-items:center; gap:10px;"><button id="edit-page-btn" class="btn btn-small" style="display:none;">📝 編集</button><div id="like-container" style="display:none; align-items:center; gap:10px;"><button class="like-btn" onclick="addLike()">❤ <span id="like-count">0</span></button></div></div></div>
-                    <div id="wiki-view"></div>
-                    <section id="page-comment-section" style="display:none;">
-                        <h3 style="color:#fff; font-size:1.2rem; margin-bottom:20px;">コメント</h3>
-                        <div style="margin-bottom:25px; background:rgba(0,0,0,0.3); padding:15px; border-radius:8px;">
-                            <div style="display:flex; gap:10px; margin-bottom:10px;"><input type="text" id="comment-user" class="chat-input" placeholder="名前" style="flex:1;"><input type="password" id="comment-pass" class="chat-input" placeholder="削除パスワード" style="flex:1;"></div>
-                            <textarea id="comment-text" class="chat-input" placeholder="コメントを入力" style="height:80px; resize:none;"></textarea>
-                            <button class="btn" style="width:100%;" onclick="sendComment()">投稿</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:20px;">
+                        <h1 id="page-title" style="font-size:1.5rem;">Loading...</h1>
+                        <div style="display:flex; gap:8px;">
+                            <button id="edit-page-btn" class="btn btn-small" style="display:none;">📝 編集</button>
+                            <div id="like-container" style="display:none;">
+                                <button class="btn btn-small" style="background:rgba(255,77,77,0.2); color:#ff4d4d; border:1px solid #ff4d4d;" onclick="addLike()">❤ <span id="like-count">0</span></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="wiki-view">
+                        <!-- コンテンツ描画エリア -->
+                    </div>
+
+                    <section id="page-comment-section" style="display:none; margin-top:40px; border-top:1px solid var(--border); padding-top:20px;">
+                        <h3 style="margin-bottom:15px;">コメント</h3>
+                        <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:8px; margin-bottom:20px;">
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <input type="text" id="comment-user" class="chat-input" placeholder="名前">
+                                <input type="password" id="comment-pass" class="chat-input" placeholder="削除用パス">
+                            </div>
+                            <textarea id="comment-text" class="chat-input" style="height:80px;" placeholder="コメント内容"></textarea>
+                            <button class="btn" style="width:100%" onclick="sendComment()">コメント投稿</button>
                         </div>
                         <div id="page-comments-list"></div>
                     </section>
                 </article>
+
                 <aside id="right-sidebar">
-                    <div class="widget"><div class="widget-title">GLOBAL CHAT</div><div id="chat-list"></div><div style="display:flex; gap:5px;"><input type="text" id="c-u" class="chat-input" placeholder="名前" style="flex:1;"><input type="password" id="c-p" class="chat-input" placeholder="パス" style="flex:1;"></div><input type="text" id="c-t" class="chat-input" placeholder="メッセージ..." onkeydown="if(event.key==='Enter') sendChat()"></div>
-                    <div class="widget" id="toc-box"><div class="widget-title">CONTENTS</div><ul id="toc-list" style="list-style:none; padding:0; font-size:0.8rem;"></ul></div>
+                    <div class="widget">
+                        <div class="widget-title">Global Chat</div>
+                        <div id="chat-list"></div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <input type="text" id="c-u" class="chat-input" placeholder="名前">
+                            <input type="password" id="c-p" class="chat-input" placeholder="パス">
+                        </div>
+                        <input type="text" id="c-t" class="chat-input" placeholder="Enterで送信..." onkeydown="if(event.key==='Enter') sendChat()">
+                    </div>
+
+                    <div class="widget" id="toc-box" style="display:none;">
+                        <div class="widget-title">目次</div>
+                        <ul id="toc-list" class="nav-list"></ul>
+                    </div>
                 </aside>
             </div>
+
+            <!-- エディタモード -->
             <section id="editor-area">
-                <div style="display:flex; justify-content:space-between;"><h2 style="color:#fff;">EDIT</h2><span id="char-count" style="color:#666;">0 / 10000</span></div>
-                <div style="margin-bottom:10px;"><button class="btn btn-small" onclick="insertImage()">📷 画像挿入</button></div>
-                <input type="text" id="e-id" placeholder="ページ名" class="chat-input">
-                <input type="text" id="e-ca" placeholder="カテゴリ" class="chat-input">
-                <input type="password" id="e-pass" placeholder="保存パスワード（作成時のみ必須）" class="chat-input">
-                <input type="text" id="e-shared" placeholder="共同編集者のメール (カンマ区切り)" class="chat-input">
-                <textarea id="e-ct"></textarea>
-                <div style="display:flex; gap:10px; margin-top:10px;"><button class="btn" onclick="savePage()">保存</button><button class="btn" style="background:#444;" onclick="location.hash='#home'">戻る</button></div>
+                <article id="wiki-card">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                        <h2>編集エディタ</h2>
+                        <span id="char-count" style="font-size:0.8rem; color:var(--text-muted)">0 / 10000</span>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <button class="btn btn-small" onclick="insertImage()">📷 画像を挿入</button>
+                    </div>
+                    <input type="text" id="e-id" class="edit-input" placeholder="ページ名">
+                    <input type="text" id="e-ca" class="edit-input" placeholder="カテゴリ">
+                    <input type="password" id="e-pass" class="edit-input" placeholder="保存パスワード">
+                    <input type="text" id="e-shared" class="edit-input" placeholder="共同編集者のメール (カンマ区切り)">
+                    <textarea id="e-ct" class="edit-input" placeholder="Markdown形式で入力..."></textarea>
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button class="btn" onclick="savePage()">保存する</button>
+                        <button class="btn" style="background:#444;" onclick="location.hash='#home'">キャンセル</button>
+                    </div>
+                </article>
             </section>
         </div>
     </main>
 </div>
-<a href="javascript:openEditor()" class="fab">+</a>
+
+<a href="javascript:void(0)" onclick="openEditor()" class="fab">+</a>
+
 </body>
 </html>
